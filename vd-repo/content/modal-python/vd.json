@@ -1,0 +1,56 @@
+{
+  "title": "Modal Python SDK",
+  "description": "Official Python SDK documentation for Modal.com - a serverless platform for running Python code in the cloud",
+  "root_url": "https://modal.com/docs/python",
+  "scrape_date": "2025-08-06T00:00:00Z",
+  "version": "1.0.0",
+  "files": [
+    {
+      "path": "README.md",
+      "url": "https://modal.com/docs/python",
+      "title": "Modal Python Documentation",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    },
+    {
+      "path": "examples/hello_world.md",
+      "url": "https://modal.com/docs/python/examples/hello_world",
+      "title": "Hello World Example",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    },
+    {
+      "path": "examples/flux.md",
+      "url": "https://modal.com/docs/python/examples/flux",
+      "title": "Flux Image Generation",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    },
+    {
+      "path": "guide/apps.md",
+      "url": "https://modal.com/docs/python/guide/apps",
+      "title": "Modal Apps Guide",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    },
+    {
+      "path": "guide/gpu.md",
+      "url": "https://modal.com/docs/python/guide/gpu",
+      "title": "GPU Computing Guide",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    },
+    {
+      "path": "reference/modal.App.md",
+      "url": "https://modal.com/docs/python/reference/modal.App",
+      "title": "modal.App Reference",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    },
+    {
+      "path": "reference/modal.Function.md",
+      "url": "https://modal.com/docs/python/reference/modal.Function",
+      "title": "modal.Function Reference",
+      "scraped_at": "2025-08-06T00:00:00Z"
+    }
+  ],
+  "metadata": {
+    "doc_type": "mintlify",
+    "language": "python",
+    "tags": ["serverless", "cloud", "gpu", "python", "sdk"]
+  }
+}
