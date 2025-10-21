@@ -28,7 +28,9 @@ Examples:
   linctl issue list --newer-than 3_weeks_ago  # Show issues from last 3 weeks
   linctl issue search "login bug" --team ENG
   linctl issue get LIN-123
-  linctl issue create --title "Bug fix" --team ENG`,
+  linctl issue create --title "Bug fix" --team ENG
+  linctl issue relate LIN-123 --blocks LIN-456
+  linctl issue unrelate LIN-123 --blocks LIN-456`,
 }
 
 var issueListCmd = &cobra.Command{
@@ -1072,6 +1074,327 @@ Examples:
 	},
 }
 
+var issueRelateCmd = &cobra.Command{
+	Use:     "relate [issue-id]",
+	Aliases: []string{"link"},
+	Short:   "Create a relation between issues",
+	Long: `Create a relation between two issues (blocks, blocked-by, related, duplicate).
+
+Examples:
+  linctl issue relate LIN-123 --blocks LIN-456
+  linctl issue relate LIN-123 --blocked-by LIN-456
+  linctl issue relate LIN-123 --related LIN-456
+  linctl issue relate LIN-123 --duplicate LIN-456`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		plaintext := viper.GetBool("plaintext")
+		jsonOut := viper.GetBool("json")
+		sourceIssue := args[0]
+
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error("Not authenticated. Run 'linctl auth' first.", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		client := api.NewClient(authHeader)
+
+		// Determine which relation type flag was used
+		var relationType string
+		var targetIssue string
+		var swapIssues bool // For --blocked-by, we need to reverse the relationship
+
+		blocksTarget, _ := cmd.Flags().GetString("blocks")
+		blockedByTarget, _ := cmd.Flags().GetString("blocked-by")
+		relatedTarget, _ := cmd.Flags().GetString("related")
+		duplicateTarget, _ := cmd.Flags().GetString("duplicate")
+
+		// Count how many flags were set
+		flagsSet := 0
+		if blocksTarget != "" {
+			flagsSet++
+			relationType = "blocks"
+			targetIssue = blocksTarget
+		}
+		if blockedByTarget != "" {
+			flagsSet++
+			relationType = "blocks" // Linear uses "blocks", we swap the issues
+			targetIssue = blockedByTarget
+			swapIssues = true // Reverse: "A blocked-by B" means "B blocks A"
+		}
+		if relatedTarget != "" {
+			flagsSet++
+			relationType = "related"
+			targetIssue = relatedTarget
+		}
+		if duplicateTarget != "" {
+			flagsSet++
+			relationType = "duplicate"
+			targetIssue = duplicateTarget
+		}
+
+		// Validate that exactly one relation flag was specified
+		if flagsSet == 0 {
+			output.Error("Must specify one relation type: --blocks, --blocked-by, --related, or --duplicate", plaintext, jsonOut)
+			os.Exit(1)
+		}
+		if flagsSet > 1 {
+			output.Error("Only one relation type can be specified at a time", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Look up source issue to get its UUID
+		sourceIssueData, err := client.GetIssue(context.Background(), sourceIssue)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to find source issue %s: %v", sourceIssue, err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Look up target issue to get its UUID
+		targetIssueData, err := client.GetIssue(context.Background(), targetIssue)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to find target issue %s: %v", targetIssue, err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Determine which issue is the source and which is the target for the API call
+		var apiSourceID, apiTargetID string
+		if swapIssues {
+			// For --blocked-by: "A blocked-by B" means "B blocks A"
+			apiSourceID = targetIssueData.ID
+			apiTargetID = sourceIssueData.ID
+		} else {
+			apiSourceID = sourceIssueData.ID
+			apiTargetID = targetIssueData.ID
+		}
+
+		// Create the relation using UUIDs
+		relation, err := client.CreateIssueRelation(context.Background(), apiSourceID, apiTargetID, relationType)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to create relation: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Handle output
+		if jsonOut {
+			output.JSON(relation)
+		} else if plaintext {
+			// For plaintext, show from user's perspective
+			displayRelation := relationType
+			if swapIssues {
+				displayRelation = "blocked-by"
+			}
+			fmt.Printf("Created %s relation between %s and %s\n", displayRelation, sourceIssue, targetIssue)
+		} else {
+			// Rich display - show from user's perspective
+			var displaySourceID, displayTargetID, displaySourceTitle, displayTargetTitle string
+			var relationLabel string
+
+			if swapIssues {
+				// User said "A blocked-by B", display it that way
+				displaySourceID = sourceIssue
+				displayTargetID = targetIssue
+				displaySourceTitle = sourceIssueData.Title
+				displayTargetTitle = targetIssueData.Title
+				relationLabel = "is blocked by"
+			} else {
+				// Display as-is
+				displaySourceID = relation.Issue.Identifier
+				displayTargetID = relation.RelatedIssue.Identifier
+				displaySourceTitle = relation.Issue.Title
+				displayTargetTitle = relation.RelatedIssue.Title
+				switch relationType {
+				case "blocks":
+					relationLabel = "blocks"
+				case "related":
+					relationLabel = "is related to"
+				case "duplicate":
+					relationLabel = "is duplicate of"
+				}
+			}
+
+			fmt.Printf("%s Created relation: %s %s %s\n",
+				color.New(color.FgGreen).Sprint("✓"),
+				color.New(color.FgCyan, color.Bold).Sprint(displaySourceID),
+				color.New(color.FgYellow).Sprint(relationLabel),
+				color.New(color.FgCyan, color.Bold).Sprint(displayTargetID))
+			fmt.Printf("  %s: %s\n",
+				displaySourceID,
+				displaySourceTitle)
+			fmt.Printf("  %s: %s\n",
+				displayTargetID,
+				displayTargetTitle)
+		}
+	},
+}
+
+var issueUnrelateCmd = &cobra.Command{
+	Use:     "unrelate [issue-id]",
+	Aliases: []string{"unlink"},
+	Short:   "Remove a relation between issues",
+	Long: `Remove a relation between two issues.
+
+Examples:
+  linctl issue unrelate DEL-1681 --blocks DEL-1680
+  linctl issue unrelate DEL-1680 --blocked-by DEL-1681
+  linctl issue unrelate DEL-1681 --related DEL-1680
+  linctl issue unrelate DEL-1680 --duplicate DEL-1681`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		plaintext := viper.GetBool("plaintext")
+		jsonOut := viper.GetBool("json")
+		sourceIssue := args[0]
+
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error("Not authenticated. Run 'linctl auth' first.", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		client := api.NewClient(authHeader)
+
+		// Determine which relation type flag was used
+		var relationType string
+		var targetIssue string
+		var swapForLookup bool // For --blocked-by, we need to check the reversed relation
+
+		blocksTarget, _ := cmd.Flags().GetString("blocks")
+		blockedByTarget, _ := cmd.Flags().GetString("blocked-by")
+		relatedTarget, _ := cmd.Flags().GetString("related")
+		duplicateTarget, _ := cmd.Flags().GetString("duplicate")
+
+		// Count how many flags were set
+		flagsSet := 0
+		if blocksTarget != "" {
+			flagsSet++
+			relationType = "blocks"
+			targetIssue = blocksTarget
+		}
+		if blockedByTarget != "" {
+			flagsSet++
+			relationType = "blocks" // Linear stores it as "blocks"
+			targetIssue = blockedByTarget
+			swapForLookup = true // Look for the reverse relation
+		}
+		if relatedTarget != "" {
+			flagsSet++
+			relationType = "related"
+			targetIssue = relatedTarget
+		}
+		if duplicateTarget != "" {
+			flagsSet++
+			relationType = "duplicate"
+			targetIssue = duplicateTarget
+		}
+
+		// Validate that exactly one relation flag was specified
+		if flagsSet == 0 {
+			output.Error("Must specify one relation type: --blocks, --blocked-by, --related, or --duplicate", plaintext, jsonOut)
+			os.Exit(1)
+		}
+		if flagsSet > 1 {
+			output.Error("Only one relation type can be specified at a time", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Look up both issues to get their data
+		var lookupIssue string
+		if swapForLookup {
+			// For --blocked-by, the relation is stored on the target, not source
+			lookupIssue = targetIssue
+		} else {
+			lookupIssue = sourceIssue
+		}
+
+		issueData, err := client.GetIssue(context.Background(), lookupIssue)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to find issue %s: %v", lookupIssue, err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Look up target issue to get its UUID for matching
+		targetIssueData, err := client.GetIssue(context.Background(), targetIssue)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to find target issue %s: %v", targetIssue, err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Find the relation in the issue's relations
+		var relationID string
+		var matchIssueID string
+		if swapForLookup {
+			matchIssueID = issueData.ID // Looking for source issue in target's relations
+			// Actually, we need the source issue ID to match
+			sourceIssueData, err := client.GetIssue(context.Background(), sourceIssue)
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to find source issue %s: %v", sourceIssue, err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			matchIssueID = sourceIssueData.ID
+		} else {
+			matchIssueID = targetIssueData.ID
+		}
+
+		if issueData.Relations != nil {
+			for _, relation := range issueData.Relations.Nodes {
+				if relation.Type == relationType && relation.RelatedIssue != nil && relation.RelatedIssue.ID == matchIssueID {
+					relationID = relation.ID
+					break
+				}
+			}
+		}
+
+		if relationID == "" {
+			output.Error(fmt.Sprintf("No %s relation found between %s and %s", relationType, sourceIssue, targetIssue), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Delete the relation
+		err = client.DeleteIssueRelation(context.Background(), relationID)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to delete relation: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Handle output
+		if jsonOut {
+			output.JSON(map[string]interface{}{
+				"success": true,
+				"source":  sourceIssue,
+				"target":  targetIssue,
+				"type":    relationType,
+			})
+		} else if plaintext {
+			displayRelation := relationType
+			if swapForLookup {
+				displayRelation = "blocked-by"
+			}
+			fmt.Printf("Removed %s relation between %s and %s\n", displayRelation, sourceIssue, targetIssue)
+		} else {
+			// Rich display
+			relationLabel := relationType
+			if swapForLookup {
+				relationLabel = "blocked by"
+			} else {
+				switch relationType {
+				case "blocks":
+					relationLabel = "blocks"
+				case "related":
+					relationLabel = "related to"
+				case "duplicate":
+					relationLabel = "duplicate of"
+				}
+			}
+
+			fmt.Printf("%s Removed relation: %s %s %s\n",
+				color.New(color.FgGreen).Sprint("✓"),
+				color.New(color.FgCyan, color.Bold).Sprint(sourceIssue),
+				color.New(color.FgYellow).Sprint(relationLabel),
+				color.New(color.FgCyan, color.Bold).Sprint(targetIssue))
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(issueCmd)
 	issueCmd.AddCommand(issueListCmd)
@@ -1080,6 +1403,8 @@ func init() {
 	issueCmd.AddCommand(issueAssignCmd)
 	issueCmd.AddCommand(issueCreateCmd)
 	issueCmd.AddCommand(issueUpdateCmd)
+	issueCmd.AddCommand(issueRelateCmd)
+	issueCmd.AddCommand(issueUnrelateCmd)
 
 	// Issue list flags
 	issueListCmd.Flags().StringP("assignee", "a", "", "Filter by assignee (email or 'me')")
@@ -1118,4 +1443,16 @@ func init() {
 	issueUpdateCmd.Flags().StringP("state", "s", "", "State name (e.g., 'Todo', 'In Progress', 'Done')")
 	issueUpdateCmd.Flags().Int("priority", -1, "Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
 	issueUpdateCmd.Flags().String("due-date", "", "Due date (YYYY-MM-DD format, or empty to remove)")
+
+	// Issue relate flags
+	issueRelateCmd.Flags().String("blocks", "", "Issue ID that this issue blocks")
+	issueRelateCmd.Flags().String("blocked-by", "", "Issue ID that blocks this issue")
+	issueRelateCmd.Flags().String("related", "", "Issue ID that is related to this issue")
+	issueRelateCmd.Flags().String("duplicate", "", "Issue ID that this issue duplicates")
+
+	// Issue unrelate flags
+	issueUnrelateCmd.Flags().String("blocks", "", "Issue ID that this issue blocks")
+	issueUnrelateCmd.Flags().String("blocked-by", "", "Issue ID that blocks this issue")
+	issueUnrelateCmd.Flags().String("related", "", "Issue ID that is related to this issue")
+	issueUnrelateCmd.Flags().String("duplicate", "", "Issue ID that this issue duplicates")
 }

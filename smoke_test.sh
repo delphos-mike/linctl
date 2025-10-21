@@ -148,6 +148,7 @@ fi
 echo -e "\n${YELLOW}Testing help commands...${NC}"
 run_test "help" "go run main.go --help" "Usage:"
 run_test "issue help" "go run main.go issue --help" "Available Commands:"
+run_test "issue relate help" "go run main.go issue relate --help" "blocks"
 run_test "project help" "go run main.go project --help" "Available Commands:"
 run_test "team help" "go run main.go team --help" "Available Commands:"
 run_test "user help" "go run main.go user --help" "Available Commands:"

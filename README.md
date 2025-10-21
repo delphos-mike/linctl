@@ -8,6 +8,7 @@ A comprehensive command-line interface for Linear's API, built with agents in mi
 - 🔐 **Authentication**: Personal API Key support
 - 📋 **Issue Management**: Create, list, view, update, assign, and manage issues with full details
   - Sub-issue hierarchy with parent/child relationships
+  - Issue relations: blocks, blocked-by, related, duplicate
   - Git branch integration showing linked branches
   - Cycle (sprint) and project associations
   - Attachments and recent comments preview
@@ -144,6 +145,15 @@ linctl issue update LIN-123 --due-date ""  # Remove due date
 
 # Update multiple fields at once
 linctl issue update LIN-123 --title "Critical Bug" --assignee me --priority 1
+
+# Manage issue relations (dependencies)
+linctl issue relate LIN-123 --blocks LIN-456        # Mark LIN-123 as blocking LIN-456
+linctl issue relate LIN-123 --blocked-by LIN-456    # Mark LIN-123 as blocked by LIN-456
+linctl issue relate LIN-123 --related LIN-456       # Create a general relation
+linctl issue relate LIN-123 --duplicate LIN-456     # Mark as duplicate
+
+# Remove issue relations
+linctl issue unrelate LIN-123 --blocks LIN-456      # Remove blocking relation
 ```
 
 ### 3. Project Management

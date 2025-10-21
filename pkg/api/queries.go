@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -1512,4 +1513,83 @@ func (c *Client) CreateComment(ctx context.Context, issueID string, body string)
 	}
 
 	return &response.CommentCreate.Comment, nil
+}
+
+// CreateIssueRelation creates a relation between two issues
+func (c *Client) CreateIssueRelation(ctx context.Context, issueId, relatedIssueId, relationType string) (*IssueRelation, error) {
+	query := `
+		mutation CreateIssueRelation($input: IssueRelationCreateInput!) {
+			issueRelationCreate(input: $input) {
+				issueRelation {
+					id
+					type
+					issue {
+						id
+						identifier
+						title
+					}
+					relatedIssue {
+						id
+						identifier
+						title
+					}
+				}
+			}
+		}
+	`
+
+	input := map[string]interface{}{
+		"issueId":        issueId,
+		"relatedIssueId": relatedIssueId,
+		"type":           relationType,
+	}
+
+	variables := map[string]interface{}{
+		"input": input,
+	}
+
+	var response struct {
+		IssueRelationCreate struct {
+			IssueRelation IssueRelation `json:"issueRelation"`
+		} `json:"issueRelationCreate"`
+	}
+
+	err := c.Execute(ctx, query, variables, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	return &response.IssueRelationCreate.IssueRelation, nil
+}
+
+// DeleteIssueRelation deletes an issue relation by ID
+func (c *Client) DeleteIssueRelation(ctx context.Context, relationId string) error {
+	query := `
+		mutation DeleteIssueRelation($id: String!) {
+			issueRelationDelete(id: $id) {
+				success
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"id": relationId,
+	}
+
+	var response struct {
+		IssueRelationDelete struct {
+			Success bool `json:"success"`
+		} `json:"issueRelationDelete"`
+	}
+
+	err := c.Execute(ctx, query, variables, &response)
+	if err != nil {
+		return err
+	}
+
+	if !response.IssueRelationDelete.Success {
+		return fmt.Errorf("failed to delete relation")
+	}
+
+	return nil
 }
