@@ -732,13 +732,7 @@ Linear has the following rate limits:
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
-
-See CONTRIBUTING.md for a detailed release checklist and the Homebrew tap auto-bump workflow.
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, development setup, and release process.
 
 ## 📄 License
 

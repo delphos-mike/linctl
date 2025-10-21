@@ -2,6 +2,14 @@
 
 Thanks for contributing! This repo aims to keep changes simple, focused, and tested.
 
+## Contributing Workflow
+
+1. **Fork the repository** to your GitHub account
+2. **Create a feature branch**: `git checkout -b my-feature`
+3. **Make your changes** with clear, focused commits
+4. **Run tests**: `make test` to verify smoke tests pass
+5. **Submit a pull request** to the upstream repository
+
 ## Development
 
 - Requirements: Go 1.22+, `gh` CLI (optional), `jq` (for examples), `golangci-lint` (optional).
