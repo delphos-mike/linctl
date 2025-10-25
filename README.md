@@ -1,5 +1,6 @@
 # 🚀 linctl - Linear CLI Tool
 
+> **Note**: This is a fork of [dorkitude/linctl](https://github.com/dorkitude/linctl) with additional features and enhancements maintained by Mike Beaumier.
 
 A comprehensive command-line interface for Linear's API, built with agents in mind (but nice for humans too).
 
@@ -34,16 +35,9 @@ A comprehensive command-line interface for Linear's API, built with agents in mi
 
 ## 🛠️ Installation
 
-### Homebrew (macOS/Linux)
-```bash
-brew tap dorkitude/linctl
-brew install linctl
-linctl docs      # Render the README.md
-```
-
 ### From Source
 ```bash
-git clone https://github.com/dorkitude/linctl.git
+git clone https://github.com/delphos-mike/linctl.git
 cd linctl
 make deps        # Install dependencies
 make build       # Build the binary
@@ -53,7 +47,7 @@ linctl docs      # Render the README.md
 
 ### For Development
 ```bash
-git clone https://github.com/dorkitude/linctl.git
+git clone https://github.com/delphos-mike/linctl.git
 cd linctl
 make deps        # Install dependencies
 go run main.go   # Run directly without building
@@ -63,6 +57,9 @@ make lint        # Run linter
 make fmt         # Format code
 linctl docs      # Render the README.md
 ```
+
+### Original Version
+For the original version without fork-specific features, see [dorkitude/linctl](https://github.com/dorkitude/linctl).
 
 ## Important: Default Filters
 
@@ -741,8 +738,9 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ## 🔗 Links
 
 - [Linear API Documentation](https://developers.linear.app/)
-- [GitHub Repository](https://github.com/dorkitude/linctl)
-- [Issue Tracker](https://github.com/dorkitude/linctl/issues)
+- [GitHub Repository](https://github.com/delphos-mike/linctl)
+- [Issue Tracker](https://github.com/delphos-mike/linctl/issues)
+- [Original Repository](https://github.com/dorkitude/linctl)
 
 ---
 
