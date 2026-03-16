@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -158,7 +159,9 @@ type Label struct {
 	Name        string  `json:"name"`
 	Color       string  `json:"color"`
 	Description *string `json:"description"`
+	IsGroup     bool    `json:"isGroup"`
 	Parent      *Label  `json:"parent"`
+	Children    *Labels `json:"children"`
 }
 
 // Cycle represents a Linear cycle (sprint)
@@ -1513,6 +1516,257 @@ func (c *Client) CreateComment(ctx context.Context, issueID string, body string)
 	}
 
 	return &response.CommentCreate.Comment, nil
+}
+
+// GetLabels returns all labels in the workspace, optionally filtered by team.
+// Paginates automatically to collect all results.
+func (c *Client) GetLabels(ctx context.Context, teamKey string) ([]Label, error) {
+	query := `
+		query IssueLabels($first: Int, $after: String, $filter: IssueLabelFilter) {
+			issueLabels(first: $first, after: $after, filter: $filter) {
+				nodes {
+					id
+					name
+					color
+					description
+					isGroup
+					parent {
+						id
+						name
+					}
+					children {
+						nodes {
+							id
+							name
+							color
+							description
+							isGroup
+						}
+					}
+				}
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`
+
+	var allLabels []Label
+	var after string
+
+	for {
+		variables := map[string]interface{}{
+			"first": 100,
+		}
+		if after != "" {
+			variables["after"] = after
+		}
+
+		if teamKey != "" {
+			variables["filter"] = map[string]interface{}{
+				"team": map[string]interface{}{
+					"key": map[string]interface{}{"eq": teamKey},
+				},
+			}
+		}
+
+		var response struct {
+			IssueLabels struct {
+				Nodes    []Label  `json:"nodes"`
+				PageInfo PageInfo `json:"pageInfo"`
+			} `json:"issueLabels"`
+		}
+
+		err := c.Execute(ctx, query, variables, &response)
+		if err != nil {
+			return nil, err
+		}
+
+		allLabels = append(allLabels, response.IssueLabels.Nodes...)
+
+		if !response.IssueLabels.PageInfo.HasNextPage {
+			break
+		}
+		after = response.IssueLabels.PageInfo.EndCursor
+	}
+
+	return allLabels, nil
+}
+
+// ResolveLabelNames resolves label names to IDs, returning an error if any are not found
+func (c *Client) ResolveLabelNames(ctx context.Context, names []string) ([]string, error) {
+	labels, err := c.GetLabels(ctx, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch labels: %w", err)
+	}
+
+	// Build a case-insensitive lookup map
+	labelMap := make(map[string]string)
+	for _, label := range labels {
+		labelMap[strings.ToLower(label.Name)] = label.ID
+	}
+
+	var ids []string
+	var missing []string
+	for _, name := range names {
+		id, ok := labelMap[strings.ToLower(name)]
+		if !ok {
+			missing = append(missing, name)
+		} else {
+			ids = append(ids, id)
+		}
+	}
+
+	if len(missing) > 0 {
+		// List available labels for a helpful error
+		var available []string
+		for _, label := range labels {
+			available = append(available, label.Name)
+		}
+		return nil, fmt.Errorf("labels not found: %s. Available: %s",
+			strings.Join(missing, ", "), strings.Join(available, ", "))
+	}
+
+	return ids, nil
+}
+
+// CreateLabel creates a new workspace label. If parentID is set, the label is
+// created as a child of that group. Set isGroup=true to create a label group.
+func (c *Client) CreateLabel(ctx context.Context, name, color, description, parentID string, isGroup bool) (*Label, error) {
+	query := `
+		mutation CreateLabel($input: IssueLabelCreateInput!) {
+			issueLabelCreate(input: $input) {
+				success
+				issueLabel {
+					id
+					name
+					color
+					description
+					isGroup
+					parent {
+						id
+						name
+					}
+				}
+			}
+		}
+	`
+
+	input := map[string]interface{}{
+		"name": name,
+	}
+	if color != "" {
+		input["color"] = color
+	}
+	if description != "" {
+		input["description"] = description
+	}
+	if parentID != "" {
+		input["parentId"] = parentID
+	}
+	if isGroup {
+		input["isGroup"] = true
+	}
+
+	variables := map[string]interface{}{
+		"input": input,
+	}
+
+	var response struct {
+		IssueLabelCreate struct {
+			Success    bool  `json:"success"`
+			IssueLabel Label `json:"issueLabel"`
+		} `json:"issueLabelCreate"`
+	}
+
+	err := c.Execute(ctx, query, variables, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	if !response.IssueLabelCreate.Success {
+		return nil, fmt.Errorf("failed to create label")
+	}
+
+	return &response.IssueLabelCreate.IssueLabel, nil
+}
+
+// UpdateLabel updates an existing label's fields.
+func (c *Client) UpdateLabel(ctx context.Context, id string, input map[string]interface{}) (*Label, error) {
+	query := `
+		mutation UpdateLabel($id: String!, $input: IssueLabelUpdateInput!) {
+			issueLabelUpdate(id: $id, input: $input) {
+				success
+				issueLabel {
+					id
+					name
+					color
+					description
+					isGroup
+					parent {
+						id
+						name
+					}
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"id":    id,
+		"input": input,
+	}
+
+	var response struct {
+		IssueLabelUpdate struct {
+			Success    bool  `json:"success"`
+			IssueLabel Label `json:"issueLabel"`
+		} `json:"issueLabelUpdate"`
+	}
+
+	err := c.Execute(ctx, query, variables, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	if !response.IssueLabelUpdate.Success {
+		return nil, fmt.Errorf("failed to update label")
+	}
+
+	return &response.IssueLabelUpdate.IssueLabel, nil
+}
+
+// DeleteLabel deletes a label by ID.
+func (c *Client) DeleteLabel(ctx context.Context, id string) error {
+	query := `
+		mutation DeleteLabel($id: String!) {
+			issueLabelDelete(id: $id) {
+				success
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"id": id,
+	}
+
+	var response struct {
+		IssueLabelDelete struct {
+			Success bool `json:"success"`
+		} `json:"issueLabelDelete"`
+	}
+
+	err := c.Execute(ctx, query, variables, &response)
+	if err != nil {
+		return err
+	}
+
+	if !response.IssueLabelDelete.Success {
+		return fmt.Errorf("failed to delete label")
+	}
+
+	return nil
 }
 
 // CreateIssueRelation creates a relation between two issues

@@ -37,7 +37,14 @@ var issueListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
 	Short:   "List issues",
-	Long:    `List Linear issues with optional filtering.`,
+	Long: `List Linear issues with optional filtering.
+
+Label filtering supports boolean logic via the --label flag:
+  comma = AND:  --label "focus,inbox"       (must have both)
+  pipe  = OR:   --label "focus|inbox"       (must have either)
+  !     = NOT:  --label "!blocked"          (must not have)
+  mixed:        --label "focus,!blocked"    (focus AND NOT blocked)
+  mixed:        --label "focus|inbox,!blocked" (focus OR inbox, NOT blocked)`,
 	Run: func(cmd *cobra.Command, args []string) {
 		plaintext := viper.GetBool("plaintext")
 		jsonOut := viper.GetBool("json")
@@ -113,6 +120,13 @@ func renderIssueCollection(issues *api.Issues, plaintext, jsonOut bool, emptyMes
 			if issue.Team != nil {
 				fmt.Printf("- **Team**: %s\n", issue.Team.Key)
 			}
+			if issue.Labels != nil && len(issue.Labels.Nodes) > 0 {
+				var labelNames []string
+				for _, label := range issue.Labels.Nodes {
+					labelNames = append(labelNames, label.Name)
+				}
+				fmt.Printf("- **Labels**: %s\n", strings.Join(labelNames, ", "))
+			}
 			fmt.Printf("- **Created**: %s\n", issue.CreatedAt.Format("2006-01-02"))
 			fmt.Printf("- **URL**: %s\n", issue.URL)
 			if issue.Description != "" {
@@ -124,7 +138,7 @@ func renderIssueCollection(issues *api.Issues, plaintext, jsonOut bool, emptyMes
 		return
 	}
 
-	headers := []string{"Title", "State", "Assignee", "Team", "Created", "URL"}
+	headers := []string{"Title", "State", "Labels", "Assignee", "Team", "Created", "URL"}
 	rows := make([][]string, len(issues.Nodes))
 
 	for i, issue := range issues.Nodes {
@@ -165,9 +179,20 @@ func renderIssueCollection(issues *api.Issues, plaintext, jsonOut bool, emptyMes
 			assignee = color.New(color.FgYellow).Sprint(assignee)
 		}
 
+		// Build labels string
+		labelsStr := ""
+		if issue.Labels != nil && len(issue.Labels.Nodes) > 0 {
+			var labelNames []string
+			for _, label := range issue.Labels.Nodes {
+				labelNames = append(labelNames, label.Name)
+			}
+			labelsStr = strings.Join(labelNames, ", ")
+		}
+
 		rows[i] = []string{
 			truncateString(issue.Title, 40),
 			state,
+			truncateString(labelsStr, 25),
 			assignee,
 			team,
 			issue.CreatedAt.Format("2006-01-02"),
@@ -740,6 +765,17 @@ func buildIssueFilter(cmd *cobra.Command) map[string]interface{} {
 		filter["priority"] = map[string]interface{}{"eq": priority}
 	}
 
+	// Handle label filter with boolean logic:
+	//   comma = AND (must have all):    --label "focus,inbox"
+	//   pipe  = OR  (must have any):    --label "focus|inbox"
+	//   !     = NOT (must not have):    --label "!blocked"
+	//   combined: --label "focus,!blocked"  or  --label "focus|inbox,!blocked"
+	if labelExpr, _ := cmd.Flags().GetStringSlice("label"); len(labelExpr) > 0 {
+		// Join all flag values into one expression (supports repeated flags)
+		raw := strings.Join(labelExpr, ",")
+		buildLabelFilter(raw, filter)
+	}
+
 	// Handle newer-than filter
 	newerThan, _ := cmd.Flags().GetString("newer-than")
 	createdAt, err := utils.ParseTimeExpression(newerThan)
@@ -754,6 +790,124 @@ func buildIssueFilter(cmd *cobra.Command) map[string]interface{} {
 	}
 
 	return filter
+}
+
+// buildLabelFilter parses a label expression with boolean logic and applies it to the filter.
+//
+// Syntax:
+//
+//	comma = AND:  "focus,inbox"       → must have both focus AND inbox
+//	pipe  = OR:   "focus|inbox"       → must have focus OR inbox
+//	!     = NOT:  "!blocked"          → must NOT have blocked
+//	mixed:        "focus,!blocked"    → must have focus AND must NOT have blocked
+//	mixed:        "focus|inbox,!blocked" → (focus OR inbox) AND NOT blocked
+//
+// When both , and | appear, pipe-separated groups are OR'd together,
+// then AND'd with any negated terms.
+func buildLabelFilter(expr string, filter map[string]interface{}) {
+	// Split on comma first to get AND groups
+	andParts := strings.Split(expr, ",")
+
+	var positive []string
+	var negative []string
+	hasOr := false
+
+	for _, part := range andParts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		// Check if this part contains OR pipes
+		if strings.Contains(part, "|") {
+			hasOr = true
+		}
+		// Check for negation
+		if strings.HasPrefix(part, "!") {
+			name := strings.TrimSpace(strings.TrimPrefix(part, "!"))
+			if name != "" {
+				negative = append(negative, name)
+			}
+		} else {
+			positive = append(positive, part)
+		}
+	}
+
+	// If we have OR syntax, expand pipe-separated tokens in positive
+	if hasOr {
+		var expanded []string
+		for _, p := range positive {
+			for _, sub := range strings.Split(p, "|") {
+				sub = strings.TrimSpace(sub)
+				if sub != "" {
+					expanded = append(expanded, sub)
+				}
+			}
+		}
+		positive = expanded
+	}
+
+	// Build the filter clauses
+	var clauses []map[string]interface{}
+
+	if len(positive) > 0 {
+		if hasOr {
+			// OR: any of the positive labels
+			var orFilters []map[string]interface{}
+			for _, name := range positive {
+				orFilters = append(orFilters, map[string]interface{}{
+					"labels": map[string]interface{}{
+						"some": map[string]interface{}{
+							"name": map[string]interface{}{"eq": name},
+						},
+					},
+				})
+			}
+			if len(orFilters) == 1 {
+				clauses = append(clauses, orFilters[0])
+			} else {
+				clauses = append(clauses, map[string]interface{}{"or": orFilters})
+			}
+		} else {
+			// AND: all of the positive labels
+			for _, name := range positive {
+				clauses = append(clauses, map[string]interface{}{
+					"labels": map[string]interface{}{
+						"some": map[string]interface{}{
+							"name": map[string]interface{}{"eq": name},
+						},
+					},
+				})
+			}
+		}
+	}
+
+	// NOT: exclude issues that have any of the negated labels.
+	// Linear lacks a "none" filter on label collections, so we use
+	// every.name.neq — "every label on this issue has a name != X",
+	// which is true only when the issue does NOT have label X.
+	for _, name := range negative {
+		clauses = append(clauses, map[string]interface{}{
+			"labels": map[string]interface{}{
+				"every": map[string]interface{}{
+					"name": map[string]interface{}{"neq": name},
+				},
+			},
+		})
+	}
+
+	// Apply to the filter
+	if len(clauses) == 0 {
+		return
+	}
+	if len(clauses) == 1 {
+		// Single clause — merge directly into the filter
+		for k, v := range clauses[0] {
+			filter[k] = v
+		}
+	} else {
+		// Multiple clauses — wrap in "and"
+		filter["and"] = clauses
+	}
 }
 
 func priorityToString(priority int) string {
@@ -851,6 +1005,7 @@ var issueCreateCmd = &cobra.Command{
 		teamKey, _ := cmd.Flags().GetString("team")
 		priority, _ := cmd.Flags().GetInt("priority")
 		assignToMe, _ := cmd.Flags().GetBool("assign-me")
+		labelNames, _ := cmd.Flags().GetStringSlice("label")
 
 		if title == "" {
 			output.Error("Title is required (--title)", plaintext, jsonOut)
@@ -892,6 +1047,16 @@ var issueCreateCmd = &cobra.Command{
 			input["assigneeId"] = viewer.ID
 		}
 
+		// Resolve label names to IDs
+		if len(labelNames) > 0 {
+			labelIDs, err := client.ResolveLabelNames(context.Background(), labelNames)
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to resolve labels: %v", err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["labelIds"] = labelIDs
+		}
+
 		// Create issue
 		issue, err := client.CreateIssue(context.Background(), input)
 		if err != nil {
@@ -927,7 +1092,10 @@ Examples:
   linctl issue update LIN-123 --state "In Progress"
   linctl issue update LIN-123 --priority 1
   linctl issue update LIN-123 --due-date "2024-12-31"
-  linctl issue update LIN-123 --title "New title" --assignee me --priority 2`,
+  linctl issue update LIN-123 --title "New title" --assignee me --priority 2
+  linctl issue update LIN-123 --add-label focus
+  linctl issue update LIN-123 --add-label "focus,inbox"
+  linctl issue update LIN-123 --remove-label blocked`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		plaintext := viper.GetBool("plaintext")
@@ -1049,6 +1217,58 @@ Examples:
 			} else {
 				input["dueDate"] = dueDate
 			}
+		}
+
+		// Handle label add/remove
+		addLabels, _ := cmd.Flags().GetStringSlice("add-label")
+		removeLabels, _ := cmd.Flags().GetStringSlice("remove-label")
+
+		if len(addLabels) > 0 || len(removeLabels) > 0 {
+			// Fetch the issue to get current labels
+			currentIssue, err := client.GetIssue(context.Background(), args[0])
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to get issue: %v", err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+
+			// Build current label ID set
+			currentLabelIDs := make(map[string]bool)
+			if currentIssue.Labels != nil {
+				for _, label := range currentIssue.Labels.Nodes {
+					currentLabelIDs[label.ID] = true
+				}
+			}
+
+			// Resolve and add new labels
+			if len(addLabels) > 0 {
+				addIDs, err := client.ResolveLabelNames(context.Background(), addLabels)
+				if err != nil {
+					output.Error(fmt.Sprintf("Failed to resolve labels: %v", err), plaintext, jsonOut)
+					os.Exit(1)
+				}
+				for _, id := range addIDs {
+					currentLabelIDs[id] = true
+				}
+			}
+
+			// Resolve and remove labels
+			if len(removeLabels) > 0 {
+				removeIDs, err := client.ResolveLabelNames(context.Background(), removeLabels)
+				if err != nil {
+					output.Error(fmt.Sprintf("Failed to resolve labels: %v", err), plaintext, jsonOut)
+					os.Exit(1)
+				}
+				for _, id := range removeIDs {
+					delete(currentLabelIDs, id)
+				}
+			}
+
+			// Build the final label ID list
+			var finalLabelIDs []string
+			for id := range currentLabelIDs {
+				finalLabelIDs = append(finalLabelIDs, id)
+			}
+			input["labelIds"] = finalLabelIDs
 		}
 
 		// Check if any updates were specified
@@ -1415,6 +1635,7 @@ func init() {
 	issueListCmd.Flags().BoolP("include-completed", "c", false, "Include completed and canceled issues")
 	issueListCmd.Flags().StringP("sort", "o", "linear", "Sort order: linear (default), created, updated")
 	issueListCmd.Flags().StringP("newer-than", "n", "", "Show issues created after this time (default: 6_months_ago, use 'all_time' for no filter)")
+	issueListCmd.Flags().StringSlice("label", nil, "Filter by label (comma=AND, pipe=OR, !=NOT: \"focus,!blocked\" or \"focus|inbox\")")
 
 	// Issue search flags
 	issueSearchCmd.Flags().StringP("assignee", "a", "", "Filter by assignee (email or 'me')")
@@ -1426,6 +1647,7 @@ func init() {
 	issueSearchCmd.Flags().Bool("include-archived", false, "Include archived issues in results")
 	issueSearchCmd.Flags().StringP("sort", "o", "linear", "Sort order: linear (default), created, updated")
 	issueSearchCmd.Flags().StringP("newer-than", "n", "", "Show issues created after this time (default: 6_months_ago, use 'all_time' for no filter)")
+	issueSearchCmd.Flags().StringSlice("label", nil, "Filter by label (comma=AND, pipe=OR, !=NOT: \"focus,!blocked\" or \"focus|inbox\")")
 
 	// Issue create flags
 	issueCreateCmd.Flags().StringP("title", "", "", "Issue title (required)")
@@ -1433,6 +1655,7 @@ func init() {
 	issueCreateCmd.Flags().StringP("team", "t", "", "Team key (required)")
 	issueCreateCmd.Flags().Int("priority", 3, "Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
 	issueCreateCmd.Flags().BoolP("assign-me", "m", false, "Assign to yourself")
+	issueCreateCmd.Flags().StringSlice("label", nil, "Labels to apply (comma-separated or repeated)")
 	_ = issueCreateCmd.MarkFlagRequired("title")
 	_ = issueCreateCmd.MarkFlagRequired("team")
 
@@ -1443,6 +1666,8 @@ func init() {
 	issueUpdateCmd.Flags().StringP("state", "s", "", "State name (e.g., 'Todo', 'In Progress', 'Done')")
 	issueUpdateCmd.Flags().Int("priority", -1, "Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
 	issueUpdateCmd.Flags().String("due-date", "", "Due date (YYYY-MM-DD format, or empty to remove)")
+	issueUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (comma-separated or repeated)")
+	issueUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (comma-separated or repeated)")
 
 	// Issue relate flags
 	issueRelateCmd.Flags().String("blocks", "", "Issue ID that this issue blocks")

@@ -10,11 +10,13 @@ A comprehensive command-line interface for Linear's API, built with agents in mi
 - 📋 **Issue Management**: Create, list, view, update, assign, and manage issues with full details
   - Sub-issue hierarchy with parent/child relationships
   - Issue relations: blocks, blocked-by, related, duplicate
+  - **Label management**: add, remove, and filter by labels with boolean logic (AND/OR/NOT)
   - Git branch integration showing linked branches
   - Cycle (sprint) and project associations
   - Attachments and recent comments preview
   - Due dates, snoozed status, and completion tracking
   - Full-text search via `linctl issue search`
+- 🏷️ **Label Management**: List, create, and delete workspace labels with group support; filter by team
 - 👥 **Team Management**: View teams, get team details, and list team members
 - 🚀 **Project Tracking**: Comprehensive project information
   - Progress visualization with issue statistics
@@ -123,8 +125,14 @@ linctl issue list --newer-than 1_day_ago
 # Get issue details (now includes git branch, cycle, project, attachments, and comments)
 linctl issue get LIN-123
 
-# Create a new issue
+# Filter issues by label
+linctl issue list --label focus
+linctl issue list --label "focus,!blocked"        # AND + NOT
+linctl issue list --label "focus|inbox"            # OR
+
+# Create a new issue (with optional labels)
 linctl issue create --title "Bug fix" --team ENG
+linctl issue create --title "Bug fix" --team ENG --label "focus,Bug"
 
 # Assign issue to yourself
 linctl issue assign LIN-123
@@ -143,6 +151,12 @@ linctl issue update LIN-123 --due-date ""  # Remove due date
 # Update multiple fields at once
 linctl issue update LIN-123 --title "Critical Bug" --assignee me --priority 1
 
+# Manage labels on existing issues
+linctl issue update LIN-123 --add-label focus
+linctl issue update LIN-123 --add-label "focus,inbox"
+linctl issue update LIN-123 --remove-label blocked
+linctl issue update LIN-123 --add-label focus --remove-label inbox
+
 # Manage issue relations (dependencies)
 linctl issue relate LIN-123 --blocks LIN-456        # Mark LIN-123 as blocking LIN-456
 linctl issue relate LIN-123 --blocked-by LIN-456    # Mark LIN-123 as blocked by LIN-456
@@ -153,7 +167,31 @@ linctl issue relate LIN-123 --duplicate LIN-456     # Mark as duplicate
 linctl issue unrelate LIN-123 --blocks LIN-456      # Remove blocking relation
 ```
 
-### 3. Project Management
+### 3. Label Management
+```bash
+# List all labels in the workspace
+linctl label list
+
+# List labels for a specific team
+linctl label list --team DEL
+
+# List labels as JSON (useful for agents)
+linctl label list --json
+
+# Create a label group (parent container for child labels)
+linctl label create --name "mike" --is-group --color "#5e6ad2" --description "Personal workflow"
+
+# Create a label under a group
+linctl label create --name "mike:focus" --group mike --color "#eb5757"
+
+# Create a standalone label
+linctl label create --name "urgent-fix" --color "#eb5757"
+
+# Delete a label by name or ID
+linctl label delete "mike:test"
+```
+
+### 4. Project Management
 ```bash
 # List all projects (shows IDs)
 linctl project list
@@ -171,7 +209,7 @@ linctl project list --newer-than all_time
 linctl project get 65a77a62-ec5e-491e-b1d9-84aebee01b33
 ```
 
-### 4. Team Management
+### 5. Team Management
 ```bash
 # List all teams
 linctl team list
@@ -183,7 +221,7 @@ linctl team get ENG
 linctl team members ENG
 ```
 
-### 5. User Management
+### 6. User Management
 ```bash
 # List all users
 linctl user list
@@ -198,7 +236,7 @@ linctl user get john@example.com
 linctl user me
 ```
 
-### 6. Comments
+### 7. Comments
 ```bash
 # List comments on an issue
 linctl comment list LIN-123
@@ -239,6 +277,7 @@ linctl issue ls [flags]     # Short alias
   -l, --limit int          Maximum results (default 50)
   -o, --sort string        Sort order: linear (default), created, updated
   -n, --newer-than string  Show items created after this time (default: 6_months_ago, use 'all_time' for no filter)
+      --label stringSlice  Filter by label (comma=AND, pipe=OR, !=NOT)
 
 # Get issue details (shows parent and sub-issues)
 linctl issue get <issue-id>
@@ -253,6 +292,7 @@ linctl issue new [flags]      # Alias
   -t, --team string        Team key (required)
   --priority int       Priority 0-4 (default 3)
   -m, --assign-me          Assign to yourself
+      --label stringSlice  Labels to apply (comma-separated or repeated)
 
 # Assign issue to yourself
 linctl issue assign <issue-id>
@@ -267,9 +307,45 @@ linctl issue edit <issue-id> [flags]    # Alias
   -s, --state string       State name (e.g., 'Todo', 'In Progress', 'Done')
   --priority int           Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)
   --due-date string        Due date (YYYY-MM-DD format, or empty to remove)
+  --add-label stringSlice  Labels to add (comma-separated or repeated)
+  --remove-label stringSlice Labels to remove (comma-separated or repeated)
 
 # Archive issue (coming soon)
 linctl issue archive <issue-id>
+```
+
+### Label Commands
+```bash
+# List all workspace labels (paginates automatically)
+linctl label list
+linctl label ls              # Alias
+
+# Flags:
+  -t, --team string        Filter by team key
+
+# Examples:
+linctl label list --team DEL    # Labels for Delphos Labs team
+linctl label list --json        # JSON output for scripting
+
+# Create a new label
+linctl label create --name <name> [flags]
+
+# Flags:
+  --name string            Label name (required)
+  --color string           Label color as hex (e.g. #eb5757)
+  -d, --description string Label description
+  --group string           Parent group name
+  --is-group               Create as a label group
+
+# Examples:
+linctl label create --name "mike" --is-group --color "#5e6ad2"
+linctl label create --name "mike:focus" --group mike --color "#eb5757"
+
+# Delete a label
+linctl label delete <name-or-id>
+
+# Examples:
+linctl label delete "mike:test"
 ```
 
 ### Team Commands
@@ -520,6 +596,61 @@ linctl issue list --newer-than 1_day_ago
 # Combine with other filters
 linctl issue list --newer-than 2_weeks_ago --assignee me --sort updated
 ```
+
+## 🏷️ Label Filtering
+
+The `--label` flag on `issue list` and `issue search` supports boolean logic for flexible filtering:
+
+### Syntax
+
+| Operator | Meaning | Example |
+|----------|---------|---------|
+| `,` (comma) | AND — must have all | `--label "focus,inbox"` |
+| `\|` (pipe) | OR — must have any | `--label "focus\|inbox"` |
+| `!` (prefix) | NOT — must not have | `--label "!blocked"` |
+
+Operators can be combined. NOT terms are always AND'd with the rest:
+
+| Expression | Meaning |
+|------------|---------|
+| `focus` | Has "focus" label |
+| `focus,inbox` | Has both "focus" AND "inbox" |
+| `focus\|inbox` | Has "focus" OR "inbox" |
+| `!blocked` | Does NOT have "blocked" |
+| `focus,!blocked` | Has "focus" AND does NOT have "blocked" |
+| `focus\|inbox,!blocked` | Has ("focus" OR "inbox") AND does NOT have "blocked" |
+
+### Examples
+
+```bash
+# Simple: issues with the "focus" label
+linctl issue list --label focus
+
+# AND: issues with both "focus" and "inbox"
+linctl issue list --label "focus,inbox"
+
+# OR: issues with either "Bug" or "Feature"
+linctl issue list --label "Bug|Feature"
+
+# NOT: issues without the "blocked" label
+linctl issue list --label "!blocked"
+
+# Combined: my focus items that aren't blocked
+linctl issue list --assignee me --label "focus,!blocked"
+
+# Combined with other flags
+linctl issue list --assignee me --state "In Progress" --label "focus"
+
+# Works with search too
+linctl issue search "auth" --label "Bug"
+```
+
+### Notes
+
+- Label names are case-sensitive (must match exactly as shown in `linctl label list`)
+- Labels are shown in `issue list` table output and plaintext output
+- Use `linctl label list` to see all available labels
+- Use `linctl label list --team DEL` to see labels for a specific team
 
 ## 🔄 Sorting Options
 

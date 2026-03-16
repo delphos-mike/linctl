@@ -12,6 +12,7 @@
 
 - Issue management (create, list, update, assign, archive)
 - Issue relations (blocks, blocked-by, related, duplicate)
+- Label management (list, create, delete, add/remove on issues, filter with boolean AND/OR/NOT)
 - Full-text issue search
 - Project tracking and management
 - Team and user management
@@ -23,9 +24,10 @@
 
 ```
 linctl/
-├── cmd/                    # Cobra commands (auth, issue, project, team, user, comment)
+├── cmd/                    # Cobra commands (auth, issue, label, project, team, user, comment)
 │   ├── root.go            # Root command and global flags
 │   ├── issue.go           # Issue commands (list, create, update, relate, search)
+│   ├── label.go           # Label commands (list, create, delete)
 │   ├── project.go         # Project commands
 │   ├── team.go            # Team commands
 │   ├── user.go            # User commands
@@ -179,6 +181,10 @@ Version is automatically injected at build time via Makefile LDFLAGS.
 ### Changes from Upstream
 
 - Added issue relation management (`relate`/`unrelate` commands)
+- Added label management (`label list/create/delete`, `--label` filter on list/search, `--add-label`/`--remove-label` on update, `--label` on create)
+- Added label group support (create groups with `--is-group`, nest children with `--group`)
+- Fixed label list pagination (now fetches all labels, not just first page)
+- Label filtering supports boolean logic: comma=AND, pipe=OR, !=NOT (e.g., `--label "focus,!blocked"`)
 - Enhanced issue search functionality
 - Updated module path to `github.com/delphos-mike/linctl`
 - Migrated from `master` to `main` branch
