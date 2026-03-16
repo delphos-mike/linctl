@@ -1095,7 +1095,8 @@ Examples:
   linctl issue update LIN-123 --title "New title" --assignee me --priority 2
   linctl issue update LIN-123 --add-label focus
   linctl issue update LIN-123 --add-label "focus,inbox"
-  linctl issue update LIN-123 --remove-label blocked`,
+  linctl issue update LIN-123 --remove-label blocked
+  linctl issue update LIN-123 --team MIKE`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
 		plaintext := viper.GetBool("plaintext")
@@ -1217,6 +1218,17 @@ Examples:
 			} else {
 				input["dueDate"] = dueDate
 			}
+		}
+
+		// Handle team move
+		if cmd.Flags().Changed("team") {
+			teamKey, _ := cmd.Flags().GetString("team")
+			team, err := client.GetTeam(context.Background(), teamKey)
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to resolve team '%s': %v", teamKey, err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["teamId"] = team.ID
 		}
 
 		// Handle label add/remove
@@ -1666,6 +1678,7 @@ func init() {
 	issueUpdateCmd.Flags().StringP("state", "s", "", "State name (e.g., 'Todo', 'In Progress', 'Done')")
 	issueUpdateCmd.Flags().Int("priority", -1, "Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
 	issueUpdateCmd.Flags().String("due-date", "", "Due date (YYYY-MM-DD format, or empty to remove)")
+	issueUpdateCmd.Flags().StringP("team", "t", "", "Move issue to a different team (team key, e.g., DEL, MIKE)")
 	issueUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (comma-separated or repeated)")
 	issueUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (comma-separated or repeated)")
 

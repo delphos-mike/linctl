@@ -157,6 +157,9 @@ linctl issue update LIN-123 --add-label "focus,inbox"
 linctl issue update LIN-123 --remove-label blocked
 linctl issue update LIN-123 --add-label focus --remove-label inbox
 
+# Move issue to a different team
+linctl issue update LIN-123 --team MIKE
+
 # Manage issue relations (dependencies)
 linctl issue relate LIN-123 --blocks LIN-456        # Mark LIN-123 as blocking LIN-456
 linctl issue relate LIN-123 --blocked-by LIN-456    # Mark LIN-123 as blocked by LIN-456
@@ -307,6 +310,7 @@ linctl issue edit <issue-id> [flags]    # Alias
   -s, --state string       State name (e.g., 'Todo', 'In Progress', 'Done')
   --priority int           Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)
   --due-date string        Due date (YYYY-MM-DD format, or empty to remove)
+  -t, --team string        Move issue to a different team (e.g., DEL, MIKE)
   --add-label stringSlice  Labels to add (comma-separated or repeated)
   --remove-label stringSlice Labels to remove (comma-separated or repeated)
 
