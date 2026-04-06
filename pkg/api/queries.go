@@ -427,6 +427,11 @@ func (c *Client) GetIssues(ctx context.Context, filter map[string]interface{}, f
 						name
 						email
 					}
+					creator {
+						id
+						name
+						email
+					}
 					team {
 						id
 						key
@@ -496,6 +501,11 @@ func (c *Client) IssueSearch(ctx context.Context, term string, filter map[string
 						color
 					}
 					assignee {
+						id
+						name
+						email
+					}
+					creator {
 						id
 						name
 						email
