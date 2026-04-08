@@ -741,6 +741,14 @@ func buildIssueFilter(cmd *cobra.Command) map[string]interface{} {
 		}
 	}
 
+	if creator, _ := cmd.Flags().GetString("creator"); creator != "" {
+		if creator == "me" {
+			filter["creator"] = map[string]interface{}{"isMe": map[string]interface{}{"eq": true}}
+		} else {
+			filter["creator"] = map[string]interface{}{"email": map[string]interface{}{"eq": creator}}
+		}
+	}
+
 	state, _ := cmd.Flags().GetString("state")
 	if state != "" {
 		filter["state"] = map[string]interface{}{"name": map[string]interface{}{"eq": state}}
@@ -1640,6 +1648,7 @@ func init() {
 
 	// Issue list flags
 	issueListCmd.Flags().StringP("assignee", "a", "", "Filter by assignee (email or 'me')")
+	issueListCmd.Flags().String("creator", "", "Filter by creator (email or 'me')")
 	issueListCmd.Flags().StringP("state", "s", "", "Filter by state name")
 	issueListCmd.Flags().StringP("team", "t", "", "Filter by team key")
 	issueListCmd.Flags().IntP("priority", "r", -1, "Filter by priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
@@ -1651,6 +1660,7 @@ func init() {
 
 	// Issue search flags
 	issueSearchCmd.Flags().StringP("assignee", "a", "", "Filter by assignee (email or 'me')")
+	issueSearchCmd.Flags().String("creator", "", "Filter by creator (email or 'me')")
 	issueSearchCmd.Flags().StringP("state", "s", "", "Filter by state name")
 	issueSearchCmd.Flags().StringP("team", "t", "", "Filter by team key")
 	issueSearchCmd.Flags().IntP("priority", "r", -1, "Filter by priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
