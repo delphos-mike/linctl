@@ -408,6 +408,18 @@ var issueGetCmd = &cobra.Command{
 				}
 			}
 
+			if issue.ProjectMilestone != nil {
+				fmt.Printf("\n## Milestone\n")
+				fmt.Printf("- **Name**: %s\n", issue.ProjectMilestone.Name)
+				fmt.Printf("- **Status**: %s\n", issue.ProjectMilestone.Status)
+				if issue.ProjectMilestone.TargetDate != nil {
+					fmt.Printf("- **Target Date**: %s\n", *issue.ProjectMilestone.TargetDate)
+				} else {
+					fmt.Printf("- **Target Date**: -\n")
+				}
+				fmt.Printf("- **Progress**: %.0f%%\n", issue.ProjectMilestone.Progress*100)
+			}
+
 			if issue.Cycle != nil {
 				fmt.Printf("\n## Cycle\n")
 				fmt.Printf("- **Name**: %s (#%d)\n", issue.Cycle.Name, issue.Cycle.Number)
@@ -625,6 +637,25 @@ var issueGetCmd = &cobra.Command{
 			fmt.Printf("Project: %s (%s)\n",
 				color.New(color.FgBlue).Sprint(issue.Project.Name),
 				color.New(color.FgWhite, color.Faint).Sprintf("%.0f%%", issue.Project.Progress*100))
+		}
+
+		if issue.ProjectMilestone != nil {
+			var statusColor *color.Color
+			switch issue.ProjectMilestone.Status {
+			case "unstarted":
+				statusColor = color.New(color.FgCyan)
+			case "next":
+				statusColor = color.New(color.FgBlue)
+			case "overdue":
+				statusColor = color.New(color.FgRed)
+			case "done":
+				statusColor = color.New(color.FgGreen)
+			default:
+				statusColor = color.New(color.FgWhite)
+			}
+			fmt.Printf("Milestone: %s (%s)\n",
+				color.New(color.FgBlue).Sprint(issue.ProjectMilestone.Name),
+				statusColor.Sprint(issue.ProjectMilestone.Status))
 		}
 
 		if issue.Cycle != nil {
@@ -1065,6 +1096,46 @@ var issueCreateCmd = &cobra.Command{
 			input["labelIds"] = labelIDs
 		}
 
+		// Handle --project flag (associate issue with a project)
+		projectID, _ := cmd.Flags().GetString("project")
+		if projectID != "" {
+			input["projectId"] = projectID
+		}
+
+		// Handle --milestone flag
+		if cmd.Flags().Changed("milestone") {
+			milestoneName, _ := cmd.Flags().GetString("milestone")
+			if projectID == "" {
+				output.Error("The --project flag is required when using --milestone on create", plaintext, jsonOut)
+				os.Exit(1)
+			}
+
+			milestones, err := client.GetProjectMilestones(context.Background(), projectID, 250, "")
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to get milestones: %v", err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+
+			var matchedID string
+			var availableNames []string
+			for _, ms := range milestones.Nodes {
+				if ms.ArchivedAt != nil {
+					continue
+				}
+				availableNames = append(availableNames, ms.Name)
+				if strings.EqualFold(ms.Name, milestoneName) {
+					matchedID = ms.ID
+				}
+			}
+
+			if matchedID == "" {
+				output.Error(fmt.Sprintf("Milestone '%s' not found. Available milestones: %s", milestoneName, strings.Join(availableNames, ", ")), plaintext, jsonOut)
+				os.Exit(1)
+			}
+
+			input["projectMilestoneId"] = matchedID
+		}
+
 		// Create issue
 		issue, err := client.CreateIssue(context.Background(), input)
 		if err != nil {
@@ -1237,6 +1308,53 @@ Examples:
 				os.Exit(1)
 			}
 			input["teamId"] = team.ID
+		}
+
+		// Handle milestone update
+		if cmd.Flags().Changed("milestone") {
+			milestoneName, _ := cmd.Flags().GetString("milestone")
+			if milestoneName == "" || strings.EqualFold(milestoneName, "none") {
+				// Unassign milestone
+				input["projectMilestoneId"] = nil
+			} else {
+				// Fetch the issue to get its project
+				issueForMilestone, err := client.GetIssue(context.Background(), args[0])
+				if err != nil {
+					output.Error(fmt.Sprintf("Failed to get issue: %v", err), plaintext, jsonOut)
+					os.Exit(1)
+				}
+				if issueForMilestone.Project == nil {
+					output.Error("Issue must belong to a project to assign a milestone", plaintext, jsonOut)
+					os.Exit(1)
+				}
+
+				// Get milestones for the project
+				milestones, err := client.GetProjectMilestones(context.Background(), issueForMilestone.Project.ID, 250, "")
+				if err != nil {
+					output.Error(fmt.Sprintf("Failed to get milestones: %v", err), plaintext, jsonOut)
+					os.Exit(1)
+				}
+
+				// Match by name (case-insensitive), skip archived
+				var matchedID string
+				var availableNames []string
+				for _, ms := range milestones.Nodes {
+					if ms.ArchivedAt != nil {
+						continue
+					}
+					availableNames = append(availableNames, ms.Name)
+					if strings.EqualFold(ms.Name, milestoneName) {
+						matchedID = ms.ID
+					}
+				}
+
+				if matchedID == "" {
+					output.Error(fmt.Sprintf("Milestone '%s' not found. Available milestones: %s", milestoneName, strings.Join(availableNames, ", ")), plaintext, jsonOut)
+					os.Exit(1)
+				}
+
+				input["projectMilestoneId"] = matchedID
+			}
 		}
 
 		// Handle label add/remove
@@ -1678,6 +1796,8 @@ func init() {
 	issueCreateCmd.Flags().Int("priority", 3, "Priority (0=None, 1=Urgent, 2=High, 3=Normal, 4=Low)")
 	issueCreateCmd.Flags().BoolP("assign-me", "m", false, "Assign to yourself")
 	issueCreateCmd.Flags().StringSlice("label", nil, "Labels to apply (comma-separated or repeated)")
+	issueCreateCmd.Flags().String("milestone", "", "Milestone name to assign")
+	issueCreateCmd.Flags().String("project", "", "Project ID (required when using --milestone)")
 	_ = issueCreateCmd.MarkFlagRequired("title")
 	_ = issueCreateCmd.MarkFlagRequired("team")
 
@@ -1691,6 +1811,7 @@ func init() {
 	issueUpdateCmd.Flags().StringP("team", "t", "", "Move issue to a different team (team key, e.g., DEL, MIKE)")
 	issueUpdateCmd.Flags().StringSlice("add-label", nil, "Labels to add (comma-separated or repeated)")
 	issueUpdateCmd.Flags().StringSlice("remove-label", nil, "Labels to remove (comma-separated or repeated)")
+	issueUpdateCmd.Flags().String("milestone", "", "Milestone name (or empty/\"none\" to unassign)")
 
 	// Issue relate flags
 	issueRelateCmd.Flags().String("blocks", "", "Issue ID that this issue blocks")
