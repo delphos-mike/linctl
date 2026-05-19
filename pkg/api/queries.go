@@ -57,8 +57,9 @@ type Issue struct {
 	URL                 string       `json:"url"`
 	BranchName          string       `json:"branchName"`
 	Cycle               *Cycle       `json:"cycle"`
-	Project             *Project     `json:"project"`
-	Attachments         *Attachments `json:"attachments"`
+	Project             *Project           `json:"project"`
+	ProjectMilestone    *ProjectMilestone  `json:"projectMilestone"`
+	Attachments         *Attachments       `json:"attachments"`
 	Comments            *Comments    `json:"comments"`
 	SnoozedUntilAt      *time.Time   `json:"snoozedUntilAt"`
 	CompletedAt         *time.Time   `json:"completedAt"`
@@ -121,8 +122,9 @@ type Project struct {
 	ConvertedFromIssue  *Issue          `json:"convertedFromIssue"`
 	LastAppliedTemplate *Template       `json:"lastAppliedTemplate"`
 	ProjectUpdates      *ProjectUpdates `json:"projectUpdates"`
-	Documents           *Documents      `json:"documents"`
-	Health              string          `json:"health"`
+	Documents           *Documents          `json:"documents"`
+	ProjectMilestones   *ProjectMilestones  `json:"projectMilestones"`
+	Health              string              `json:"health"`
 	Scope               int             `json:"scope"`
 	SlackNewIssue       bool            `json:"slackNewIssue"`
 	SlackIssueComments  bool            `json:"slackIssueComments"`
@@ -308,12 +310,24 @@ type Template struct {
 	Description string `json:"description"`
 }
 
-type Milestone struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	TargetDate  *string   `json:"targetDate"`
-	Projects    *Projects `json:"projects"`
+// ProjectMilestone represents a Linear project milestone
+type ProjectMilestone struct {
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	TargetDate  *string    `json:"targetDate"`
+	SortOrder   float64    `json:"sortOrder"`
+	Status      string     `json:"status"`
+	Progress    float64    `json:"progress"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	ArchivedAt  *time.Time `json:"archivedAt"`
+}
+
+// ProjectMilestones represents a paginated list of project milestones
+type ProjectMilestones struct {
+	Nodes    []ProjectMilestone `json:"nodes"`
+	PageInfo PageInfo           `json:"pageInfo"`
 }
 
 type Roadmaps struct {
@@ -693,6 +707,14 @@ func (c *Client) GetIssue(ctx context.Context, id string) (*Issue, error) {
 						name
 						email
 					}
+				}
+				projectMilestone {
+					id
+					name
+					description
+					targetDate
+					status
+					progress
 				}
 				attachments(first: 20) {
 					nodes {
@@ -1075,6 +1097,24 @@ func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
 						}
 					}
 				}
+				projectMilestones(first: 250) {
+					nodes {
+						id
+						name
+						description
+						targetDate
+						sortOrder
+						status
+						progress
+						createdAt
+						updatedAt
+						archivedAt
+					}
+					pageInfo {
+						hasNextPage
+						endCursor
+					}
+				}
 			}
 		}
 	`
@@ -1093,6 +1133,55 @@ func (c *Client) GetProject(ctx context.Context, id string) (*Project, error) {
 	}
 
 	return &response.Project, nil
+}
+
+// GetProjectMilestones returns milestones for a project
+func (c *Client) GetProjectMilestones(ctx context.Context, projectID string, first int, after string) (*ProjectMilestones, error) {
+	query := `
+		query ProjectMilestones($id: String!, $first: Int, $after: String) {
+			project(id: $id) {
+				projectMilestones(first: $first, after: $after) {
+					nodes {
+						id
+						name
+						description
+						targetDate
+						sortOrder
+						status
+						progress
+						createdAt
+						updatedAt
+						archivedAt
+					}
+					pageInfo {
+						hasNextPage
+						endCursor
+					}
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"id":    projectID,
+		"first": first,
+	}
+	if after != "" {
+		variables["after"] = after
+	}
+
+	var response struct {
+		Project struct {
+			ProjectMilestones ProjectMilestones `json:"projectMilestones"`
+		} `json:"project"`
+	}
+
+	err := c.Execute(ctx, query, variables, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	return &response.Project.ProjectMilestones, nil
 }
 
 // UpdateIssue updates an issue's fields
@@ -1132,6 +1221,10 @@ func (c *Client) UpdateIssue(ctx context.Context, id string, input map[string]in
 							name
 							color
 						}
+					}
+					projectMilestone {
+						id
+						name
 					}
 				}
 			}
