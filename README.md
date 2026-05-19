@@ -20,6 +20,7 @@ A comprehensive command-line interface for Linear's API, built with agents in mi
 - 👥 **Team Management**: View teams, get team details, and list team members
 - 🚀 **Project Tracking**: Comprehensive project information
   - Progress visualization with issue statistics
+  - Milestone tracking and assignment
   - Team and member associations
   - Initiative hierarchy
   - Recent issues preview
@@ -134,6 +135,9 @@ linctl issue list --label "focus|inbox"            # OR
 linctl issue create --title "Bug fix" --team ENG
 linctl issue create --title "Bug fix" --team ENG --label "focus,Bug"
 
+# Create issue with milestone (requires --project)
+linctl issue create --title "Bug fix" --team ENG --project <project-id> --milestone "Sprint 1"
+
 # Assign issue to yourself
 linctl issue assign LIN-123
 
@@ -159,6 +163,10 @@ linctl issue update LIN-123 --add-label focus --remove-label inbox
 
 # Move issue to a different team
 linctl issue update LIN-123 --team MIKE
+
+# Assign issue to a milestone (derives project from issue)
+linctl issue update LIN-123 --milestone "Sprint 1"
+linctl issue update LIN-123 --milestone ""  # Remove milestone
 
 # Manage issue relations (dependencies)
 linctl issue relate LIN-123 --blocks LIN-456        # Mark LIN-123 as blocking LIN-456
@@ -210,6 +218,11 @@ linctl project list --newer-than all_time
 
 # Get project details (use ID from list command)
 linctl project get 65a77a62-ec5e-491e-b1d9-84aebee01b33
+
+# List project milestones
+linctl project milestones <project-id>
+linctl project milestones <project-id> --json    # JSON output
+linctl project milestones <project-id> --plaintext  # Markdown output
 ```
 
 ### 5. Team Management
@@ -296,6 +309,8 @@ linctl issue new [flags]      # Alias
   --priority int       Priority 0-4 (default 3)
   -m, --assign-me          Assign to yourself
       --label stringSlice  Labels to apply (comma-separated or repeated)
+      --project string     Project ID (required for --milestone)
+      --milestone string   Milestone name
 
 # Assign issue to yourself
 linctl issue assign <issue-id>
@@ -313,6 +328,7 @@ linctl issue edit <issue-id> [flags]    # Alias
   -t, --team string        Move issue to a different team (e.g., DEL, MIKE)
   --add-label stringSlice  Labels to add (comma-separated or repeated)
   --remove-label stringSlice Labels to remove (comma-separated or repeated)
+  --milestone string       Milestone name (or empty to remove)
 
 # Archive issue (coming soon)
 linctl issue archive <issue-id>
@@ -392,6 +408,10 @@ linctl project ls [flags]     # Alias
 # Get project details
 linctl project get <project-id>
 linctl project show <project-id>  # Alias
+
+# List project milestones
+linctl project milestones <project-id>
+linctl project ms <project-id>    # Short alias
 
 # Create project (coming soon)
 linctl project create [flags]

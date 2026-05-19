@@ -116,6 +116,14 @@ if [ -n "$project_id" ]; then
     run_test "project get (plaintext)" "go run main.go project get $project_id -p" "# "
 fi
 
+# Test project milestones
+if [ -n "$project_id" ]; then
+    run_test "project milestones" "go run main.go project milestones $project_id"
+    run_test "project milestones (plaintext)" "go run main.go project milestones $project_id -p"
+    run_test "project milestones (json)" "go run main.go project milestones $project_id -j"
+    run_test "project get includes milestones (json)" "go run main.go project get $project_id -j" "projectMilestones"
+fi
+
 # Test issue commands
 echo -e "\n${YELLOW}Testing issue commands...${NC}"
 run_test "issue list" "go run main.go issue list"
@@ -150,6 +158,7 @@ run_test "help" "go run main.go --help" "Usage:"
 run_test "issue help" "go run main.go issue --help" "Available Commands:"
 run_test "issue relate help" "go run main.go issue relate --help" "blocks"
 run_test "project help" "go run main.go project --help" "Available Commands:"
+run_test "project milestones help" "go run main.go project milestones --help" "milestones"
 run_test "team help" "go run main.go team --help" "Available Commands:"
 run_test "user help" "go run main.go user --help" "Available Commands:"
 
