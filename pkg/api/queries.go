@@ -39,35 +39,35 @@ type Team struct {
 
 // Issue represents a Linear issue
 type Issue struct {
-	ID                  string       `json:"id"`
-	Identifier          string       `json:"identifier"`
-	Title               string       `json:"title"`
-	Description         string       `json:"description"`
-	Priority            int          `json:"priority"`
-	Estimate            *float64     `json:"estimate"`
-	CreatedAt           time.Time    `json:"createdAt"`
-	UpdatedAt           time.Time    `json:"updatedAt"`
-	DueDate             *string      `json:"dueDate"`
-	State               *State       `json:"state"`
-	Assignee            *User        `json:"assignee"`
-	Team                *Team        `json:"team"`
-	Labels              *Labels      `json:"labels"`
-	Children            *Issues      `json:"children"`
-	Parent              *Issue       `json:"parent"`
-	URL                 string       `json:"url"`
-	BranchName          string       `json:"branchName"`
-	Cycle               *Cycle       `json:"cycle"`
-	Project             *Project           `json:"project"`
-	ProjectMilestone    *ProjectMilestone  `json:"projectMilestone"`
-	Attachments         *Attachments       `json:"attachments"`
-	Comments            *Comments    `json:"comments"`
-	SnoozedUntilAt      *time.Time   `json:"snoozedUntilAt"`
-	CompletedAt         *time.Time   `json:"completedAt"`
-	CanceledAt          *time.Time   `json:"canceledAt"`
-	ArchivedAt          *time.Time   `json:"archivedAt"`
-	TriagedAt           *time.Time   `json:"triagedAt"`
-	CustomerTicketCount int          `json:"customerTicketCount"`
-	PreviousIdentifiers []string     `json:"previousIdentifiers"`
+	ID                  string            `json:"id"`
+	Identifier          string            `json:"identifier"`
+	Title               string            `json:"title"`
+	Description         string            `json:"description"`
+	Priority            int               `json:"priority"`
+	Estimate            *float64          `json:"estimate"`
+	CreatedAt           time.Time         `json:"createdAt"`
+	UpdatedAt           time.Time         `json:"updatedAt"`
+	DueDate             *string           `json:"dueDate"`
+	State               *State            `json:"state"`
+	Assignee            *User             `json:"assignee"`
+	Team                *Team             `json:"team"`
+	Labels              *Labels           `json:"labels"`
+	Children            *Issues           `json:"children"`
+	Parent              *Issue            `json:"parent"`
+	URL                 string            `json:"url"`
+	BranchName          string            `json:"branchName"`
+	Cycle               *Cycle            `json:"cycle"`
+	Project             *Project          `json:"project"`
+	ProjectMilestone    *ProjectMilestone `json:"projectMilestone"`
+	Attachments         *Attachments      `json:"attachments"`
+	Comments            *Comments         `json:"comments"`
+	SnoozedUntilAt      *time.Time        `json:"snoozedUntilAt"`
+	CompletedAt         *time.Time        `json:"completedAt"`
+	CanceledAt          *time.Time        `json:"canceledAt"`
+	ArchivedAt          *time.Time        `json:"archivedAt"`
+	TriagedAt           *time.Time        `json:"triagedAt"`
+	CustomerTicketCount int               `json:"customerTicketCount"`
+	PreviousIdentifiers []string          `json:"previousIdentifiers"`
 	// Additional fields
 	Number                int              `json:"number"`
 	BoardOrder            float64          `json:"boardOrder"`
@@ -117,18 +117,18 @@ type Project struct {
 	Members     *Users     `json:"members"`
 	Issues      *Issues    `json:"issues"`
 	// Additional fields
-	SlugId              string          `json:"slugId"`
-	Content             string          `json:"content"`
-	ConvertedFromIssue  *Issue          `json:"convertedFromIssue"`
-	LastAppliedTemplate *Template       `json:"lastAppliedTemplate"`
-	ProjectUpdates      *ProjectUpdates `json:"projectUpdates"`
-	Documents           *Documents          `json:"documents"`
-	ProjectMilestones   *ProjectMilestones  `json:"projectMilestones"`
-	Health              string              `json:"health"`
-	Scope               int             `json:"scope"`
-	SlackNewIssue       bool            `json:"slackNewIssue"`
-	SlackIssueComments  bool            `json:"slackIssueComments"`
-	SlackIssueStatuses  bool            `json:"slackIssueStatuses"`
+	SlugId              string             `json:"slugId"`
+	Content             string             `json:"content"`
+	ConvertedFromIssue  *Issue             `json:"convertedFromIssue"`
+	LastAppliedTemplate *Template          `json:"lastAppliedTemplate"`
+	ProjectUpdates      *ProjectUpdates    `json:"projectUpdates"`
+	Documents           *Documents         `json:"documents"`
+	ProjectMilestones   *ProjectMilestones `json:"projectMilestones"`
+	Health              string             `json:"health"`
+	Scope               int                `json:"scope"`
+	SlackNewIssue       bool               `json:"slackNewIssue"`
+	SlackIssueComments  bool               `json:"slackIssueComments"`
+	SlackIssueStatuses  bool               `json:"slackIssueStatuses"`
 }
 
 // Paginated collections

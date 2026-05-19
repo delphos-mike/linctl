@@ -1117,6 +1117,7 @@ var issueCreateCmd = &cobra.Command{
 			}
 
 			var matchedID string
+			var matchCount int
 			var availableNames []string
 			for _, ms := range milestones.Nodes {
 				if ms.ArchivedAt != nil {
@@ -1125,7 +1126,13 @@ var issueCreateCmd = &cobra.Command{
 				availableNames = append(availableNames, ms.Name)
 				if strings.EqualFold(ms.Name, milestoneName) {
 					matchedID = ms.ID
+					matchCount++
 				}
+			}
+
+			if matchCount > 1 {
+				output.Error(fmt.Sprintf("Multiple milestones match '%s'. Use a more specific name. Available milestones: %s", milestoneName, strings.Join(availableNames, ", ")), plaintext, jsonOut)
+				os.Exit(1)
 			}
 
 			if matchedID == "" {
@@ -1337,6 +1344,7 @@ Examples:
 
 				// Match by name (case-insensitive), skip archived
 				var matchedID string
+				var matchCount int
 				var availableNames []string
 				for _, ms := range milestones.Nodes {
 					if ms.ArchivedAt != nil {
@@ -1345,7 +1353,13 @@ Examples:
 					availableNames = append(availableNames, ms.Name)
 					if strings.EqualFold(ms.Name, milestoneName) {
 						matchedID = ms.ID
+						matchCount++
 					}
+				}
+
+				if matchCount > 1 {
+					output.Error(fmt.Sprintf("Multiple milestones match '%s'. Use a more specific name. Available milestones: %s", milestoneName, strings.Join(availableNames, ", ")), plaintext, jsonOut)
+					os.Exit(1)
 				}
 
 				if matchedID == "" {
