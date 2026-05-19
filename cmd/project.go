@@ -397,6 +397,27 @@ var projectGetCmd = &cobra.Command{
 				}
 			}
 
+			// Milestones
+			if project.ProjectMilestones != nil && len(project.ProjectMilestones.Nodes) > 0 {
+				activeMilestones := filterActiveMilestones(project.ProjectMilestones.Nodes)
+				if len(activeMilestones) > 0 {
+					fmt.Printf("\n## Milestones\n")
+					for _, m := range activeMilestones {
+						fmt.Printf("\n### %s\n", m.Name)
+						fmt.Printf("- **Status**: %s\n", m.Status)
+						targetDate := "-"
+						if m.TargetDate != nil {
+							targetDate = *m.TargetDate
+						}
+						fmt.Printf("- **Target Date**: %s\n", targetDate)
+						fmt.Printf("- **Progress**: %.0f%%\n", m.Progress*100)
+						if m.Description != "" {
+							fmt.Printf("- **Description**: %s\n", m.Description)
+						}
+					}
+				}
+			}
+
 			// Show recent issues
 			if project.Issues != nil && len(project.Issues.Nodes) > 0 {
 				fmt.Printf("\n## Issues (%d total)\n", len(project.Issues.Nodes))
@@ -529,6 +550,32 @@ var projectGetCmd = &cobra.Command{
 				}
 			}
 
+			if project.ProjectMilestones != nil && len(project.ProjectMilestones.Nodes) > 0 {
+				activeMilestones := filterActiveMilestones(project.ProjectMilestones.Nodes)
+				if len(activeMilestones) > 0 {
+					fmt.Printf("\n%s\n", color.New(color.Bold).Sprint("Milestones:"))
+					limit := len(activeMilestones)
+					if limit > 10 {
+						limit = 10
+					}
+					for _, m := range activeMilestones[:limit] {
+						sc := milestoneStatusColor(m.Status)
+						targetDate := "-"
+						if m.TargetDate != nil {
+							targetDate = *m.TargetDate
+						}
+						fmt.Printf("  • %s (%s) — target: %s — %.0f%%\n",
+							m.Name,
+							sc.Sprint(m.Status),
+							targetDate,
+							m.Progress*100)
+					}
+					if len(activeMilestones) > 10 {
+						fmt.Printf("  ... and %d more\n", len(activeMilestones)-10)
+					}
+				}
+			}
+
 			// Show sample issues if available
 			if project.Issues != nil && len(project.Issues.Nodes) > 0 {
 				fmt.Printf("\n%s\n", color.New(color.Bold).Sprint("Recent Issues:"))
@@ -582,10 +629,128 @@ var projectGetCmd = &cobra.Command{
 	},
 }
 
+// milestoneStatusColor returns a color for a milestone status string
+func milestoneStatusColor(status string) *color.Color {
+	switch status {
+	case "unstarted":
+		return color.New(color.FgCyan)
+	case "next":
+		return color.New(color.FgBlue)
+	case "overdue":
+		return color.New(color.FgRed)
+	case "done":
+		return color.New(color.FgGreen)
+	default:
+		return color.New(color.FgWhite)
+	}
+}
+
+// filterActiveMilestones removes archived milestones from a slice
+func filterActiveMilestones(nodes []api.ProjectMilestone) []api.ProjectMilestone {
+	var active []api.ProjectMilestone
+	for _, m := range nodes {
+		if m.ArchivedAt == nil {
+			active = append(active, m)
+		}
+	}
+	return active
+}
+
+var projectMilestonesCmd = &cobra.Command{
+	Use:     "milestones PROJECT-ID",
+	Aliases: []string{"ms"},
+	Short:   "List project milestones",
+	Args:    cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		plaintext := viper.GetBool("plaintext")
+		jsonOut := viper.GetBool("json")
+		projectID := args[0]
+
+		// Get auth header
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error(fmt.Sprintf("Authentication failed: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		// Create API client
+		client := api.NewClient(authHeader)
+
+		// Fetch milestones
+		milestones, err := client.GetProjectMilestones(context.Background(), projectID, 250, "")
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to get milestones: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		if milestones.PageInfo.HasNextPage {
+			fmt.Fprintln(os.Stderr, "⚠ Showing first 250 milestones. More exist.")
+		}
+
+		// Filter out archived milestones
+		filtered := filterActiveMilestones(milestones.Nodes)
+
+		if len(filtered) == 0 {
+			fmt.Println("No milestones for this project")
+			return
+		}
+
+		// Handle output
+		if jsonOut {
+			output.JSON(filtered)
+			return
+		} else if plaintext {
+			fmt.Println("## Milestones")
+			for _, m := range filtered {
+				fmt.Printf("\n### %s\n", m.Name)
+				fmt.Printf("- **Status**: %s\n", m.Status)
+				targetDate := "-"
+				if m.TargetDate != nil {
+					targetDate = *m.TargetDate
+				}
+				fmt.Printf("- **Target Date**: %s\n", targetDate)
+				fmt.Printf("- **Progress**: %.0f%%\n", m.Progress*100)
+				if m.Description != "" {
+					fmt.Printf("- **Description**: %s\n", m.Description)
+				}
+			}
+			return
+		} else {
+			// Table output
+			headers := []string{"Name", "Status", "Target Date", "Progress"}
+			rows := [][]string{}
+
+			for _, m := range filtered {
+				sc := milestoneStatusColor(m.Status)
+				targetDate := "-"
+				if m.TargetDate != nil {
+					targetDate = *m.TargetDate
+				}
+				rows = append(rows, []string{
+					truncateString(m.Name, 30),
+					sc.Sprint(m.Status),
+					targetDate,
+					fmt.Sprintf("%.0f%%", m.Progress*100),
+				})
+			}
+
+			output.Table(output.TableData{
+				Headers: headers,
+				Rows:    rows,
+			}, plaintext, jsonOut)
+
+			fmt.Printf("\n%s %d milestones\n",
+				color.New(color.FgGreen).Sprint("✓"),
+				len(filtered))
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(projectCmd)
 	projectCmd.AddCommand(projectListCmd)
 	projectCmd.AddCommand(projectGetCmd)
+	projectCmd.AddCommand(projectMilestonesCmd)
 
 	// List command flags
 	projectListCmd.Flags().StringP("team", "t", "", "Filter by team key")
