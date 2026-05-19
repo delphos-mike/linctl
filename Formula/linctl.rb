@@ -2,7 +2,7 @@ class Linctl < Formula
   desc "Comprehensive command-line interface for Linear's API"
   homepage "https://github.com/delphos-mike/linctl"
   url "https://github.com/delphos-mike/linctl/archive/refs/tags/v0.3.0.tar.gz"
-  # sha256 - update after v0.3.0 release tag is created
+  sha256 "3a1dbf83ef9877aa528635b8f5ee376ce01780a7bb94e588dc6845d5354d41a9"
   license "MIT"
   head "https://github.com/delphos-mike/linctl.git", branch: "main"
 
