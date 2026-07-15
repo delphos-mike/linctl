@@ -537,7 +537,73 @@ linctl project show PROJECT_ID
 
 # Create project
 linctl project create --name "New Feature" --team TEAM_KEY
+
+# Update project (only provided fields change)
+linctl project update PROJECT_ID --name "Renamed" --target-date 2026-09-30
+
+# Post a project status update (health: onTrack|atRisk|offTrack)
+linctl project status-update create PROJECT_ID --health onTrack --body "On schedule"
 ```
+
+Relevant mutations: `projectCreate(input: ProjectCreateInput!)` (name and
+teamIds required), `projectUpdate(id, input: ProjectUpdateInput!)`, and
+`projectUpdateCreate(input: ProjectUpdateCreateInput!)` for status updates.
+Note: project state is set via `statusId` (a ProjectStatus id), not a string.
+
+### Document Commands
+```bash
+# List documents (optionally scoped); --query matches the title (substring)
+linctl document list --project PROJECT_ID
+linctl document list --query "Project State"
+linctl document ls --initiative INITIATIVE_ID -j
+
+# Get a document (includes body content)
+linctl document get DOCUMENT_ID
+
+# Create a document — requires a container: --project, --initiative, or --team
+linctl document create --title "Project State" --project PROJECT_ID --body-file state.md
+echo "# Notes" | linctl document create --title "Notes" --team TEAM_KEY
+
+# Update / delete
+linctl document update DOCUMENT_ID --title "New Title"
+linctl document delete DOCUMENT_ID
+```
+
+Documents query: `documents(filter: DocumentFilter, first, after, orderBy)` /
+`document(id)`. Mutations: `documentCreate(input: DocumentCreateInput!)`,
+`documentUpdate(id, input: DocumentUpdateInput!)`, `documentDelete(id)`.
+`DocumentFilter` supports `title`, `project`, `initiative`, `team`, and
+`updatedAt`/`createdAt`. Linear rejects a document with no container.
+
+### Initiative Commands
+```bash
+# List / get initiatives
+linctl initiative list --query "Platform"
+linctl initiative get INITIATIVE_ID
+
+# Create / update (status: Proposed|Planned|Active|Completed|Canceled)
+linctl initiative create --name "Platform 2026" --status Active --owner user@example.com
+linctl initiative update INITIATIVE_ID --status Completed
+
+# Attach / detach projects
+linctl initiative add-project INITIATIVE_ID --project PROJECT_ID
+linctl initiative remove-project INITIATIVE_ID --project PROJECT_ID
+```
+
+Initiatives query: `initiatives(filter, first, after, orderBy)` /
+`initiative(id)`. Mutations: `initiativeCreate`, `initiativeUpdate`,
+`initiativeToProjectCreate` (attach), and `initiativeToProjectDelete` (detach by
+join id — resolved by paging `initiativeToProjects` and matching the
+initiative+project pair).
+
+### Raw GraphQL
+```bash
+# Run any query/mutation with stored auth; variables via --var or --vars-file
+linctl graphql -q 'query { viewer { id name } }'
+linctl graphql --query-file q.graphql --var first=50 --var 'filter={"state":{"eq":"started"}}'
+echo 'query { viewer { email } }' | linctl graphql
+```
+
 
 ### Team Commands
 ```bash

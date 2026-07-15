@@ -124,6 +124,40 @@ if [ -n "$project_id" ]; then
     run_test "project get includes milestones (json)" "go run main.go project get $project_id -j" "projectMilestones"
 fi
 
+# Test document commands
+echo -e "\n${YELLOW}Testing document commands...${NC}"
+run_test "document list" "go run main.go document list"
+run_test "document list (plaintext)" "go run main.go document list -p" "# Documents"
+run_test "document list (json)" "go run main.go document list -j"
+run_test "document list (query filter)" "go run main.go document list --query a --limit 5"
+
+# Get first document ID for document get test
+document_output=$(go run main.go document list --limit 5 2>/dev/null || true)
+document_id=$(get_first_id "$document_output")
+if [ -n "$document_id" ]; then
+    run_test "document get" "go run main.go document get $document_id"
+    run_test "document get (json)" "go run main.go document get $document_id -j" "\"id\""
+fi
+
+# Test initiative commands
+echo -e "\n${YELLOW}Testing initiative commands...${NC}"
+run_test "initiative list" "go run main.go initiative list"
+run_test "initiative list (plaintext)" "go run main.go initiative list -p" "# Initiatives"
+run_test "initiative list (json)" "go run main.go initiative list -j"
+
+# Get first initiative ID for initiative get test
+initiative_output=$(go run main.go initiative list --limit 5 2>/dev/null || true)
+initiative_id=$(get_first_id "$initiative_output")
+if [ -n "$initiative_id" ]; then
+    run_test "initiative get" "go run main.go initiative get $initiative_id"
+    run_test "initiative get (json)" "go run main.go initiative get $initiative_id -j" "\"id\""
+fi
+
+# Test graphql passthrough (read-only query)
+echo -e "\n${YELLOW}Testing graphql passthrough...${NC}"
+run_test "graphql viewer query" "go run main.go graphql -q 'query { viewer { id } }'" "\"id\""
+run_test "graphql via stdin" "echo 'query { viewer { email } }' | go run main.go graphql" "@"
+
 # Test issue commands
 echo -e "\n${YELLOW}Testing issue commands...${NC}"
 run_test "issue list" "go run main.go issue list"
@@ -159,6 +193,10 @@ run_test "issue help" "go run main.go issue --help" "Available Commands:"
 run_test "issue relate help" "go run main.go issue relate --help" "blocks"
 run_test "project help" "go run main.go project --help" "Available Commands:"
 run_test "project milestones help" "go run main.go project milestones --help" "milestones"
+run_test "project status-update help" "go run main.go project status-update --help" "Available Commands:"
+run_test "document help" "go run main.go document --help" "Available Commands:"
+run_test "initiative help" "go run main.go initiative --help" "Available Commands:"
+run_test "graphql help" "go run main.go graphql --help" "GraphQL"
 run_test "team help" "go run main.go team --help" "Available Commands:"
 run_test "user help" "go run main.go user --help" "Available Commands:"
 

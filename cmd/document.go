@@ -177,8 +177,9 @@ var documentCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a document",
 	Long: `Create a new document. Body content is read from --body, --body-file, or
-piped stdin. Attach the document to a project or initiative with --project or
---initiative; omit both to create a workspace-resident document.`,
+piped stdin. Attach the document to a project, initiative, or team with
+--project, --initiative, or --team. Linear requires a document to have a
+container; a document with no association is rejected.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		plaintext := viper.GetBool("plaintext")
 		jsonOut := viper.GetBool("json")
@@ -211,6 +212,14 @@ piped stdin. Attach the document to a project or initiative with --project or
 		}
 		if v, _ := cmd.Flags().GetString("initiative"); v != "" {
 			input["initiativeId"] = v
+		}
+		if v, _ := cmd.Flags().GetString("team"); v != "" {
+			team, err := client.GetTeam(context.Background(), v)
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to resolve team %q: %v", v, err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["teamId"] = team.ID
 		}
 		if v, _ := cmd.Flags().GetString("icon"); v != "" {
 			input["icon"] = v
@@ -252,6 +261,13 @@ is read from --body, --body-file, or piped stdin. Only provided fields change.`,
 			os.Exit(1)
 		}
 
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error(fmt.Sprintf("Authentication failed: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+		client := api.NewClient(authHeader)
+
 		input := map[string]interface{}{}
 		if cmd.Flags().Changed("title") {
 			v, _ := cmd.Flags().GetString("title")
@@ -268,6 +284,15 @@ is read from --body, --body-file, or piped stdin. Only provided fields change.`,
 			v, _ := cmd.Flags().GetString("initiative")
 			input["initiativeId"] = v
 		}
+		if cmd.Flags().Changed("team") {
+			v, _ := cmd.Flags().GetString("team")
+			team, err := client.GetTeam(context.Background(), v)
+			if err != nil {
+				output.Error(fmt.Sprintf("Failed to resolve team %q: %v", v, err), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["teamId"] = team.ID
+		}
 		if cmd.Flags().Changed("icon") {
 			v, _ := cmd.Flags().GetString("icon")
 			input["icon"] = v
@@ -278,16 +303,9 @@ is read from --body, --body-file, or piped stdin. Only provided fields change.`,
 		}
 
 		if len(input) == 0 {
-			output.Error("Nothing to update. Provide at least one of --title, --body/--body-file/stdin, --project, --initiative, --icon, --color.", plaintext, jsonOut)
+			output.Error("Nothing to update. Provide at least one of --title, --body/--body-file/stdin, --project, --initiative, --team, --icon, --color.", plaintext, jsonOut)
 			os.Exit(1)
 		}
-
-		authHeader, err := auth.GetAuthHeader()
-		if err != nil {
-			output.Error(fmt.Sprintf("Authentication failed: %v", err), plaintext, jsonOut)
-			os.Exit(1)
-		}
-		client := api.NewClient(authHeader)
 
 		doc, err := client.UpdateDocument(context.Background(), args[0], input)
 		if err != nil {
@@ -371,6 +389,7 @@ func init() {
 	documentCreateCmd.Flags().String("body-file", "", "Path to a file containing the document body")
 	documentCreateCmd.Flags().String("project", "", "Attach to project ID (UUID)")
 	documentCreateCmd.Flags().String("initiative", "", "Attach to initiative ID (UUID)")
+	documentCreateCmd.Flags().StringP("team", "t", "", "Attach to team by key")
 	documentCreateCmd.Flags().String("icon", "", "Document icon")
 	documentCreateCmd.Flags().String("color", "", "Document color (hex)")
 
@@ -379,6 +398,7 @@ func init() {
 	documentUpdateCmd.Flags().String("body-file", "", "Path to a file containing the new document body")
 	documentUpdateCmd.Flags().String("project", "", "Move to project ID (UUID)")
 	documentUpdateCmd.Flags().String("initiative", "", "Move to initiative ID (UUID)")
+	documentUpdateCmd.Flags().StringP("team", "t", "", "Move to team by key")
 	documentUpdateCmd.Flags().String("icon", "", "New document icon")
 	documentUpdateCmd.Flags().String("color", "", "New document color (hex)")
 }

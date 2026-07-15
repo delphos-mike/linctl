@@ -14,7 +14,10 @@
 - Issue relations (blocks, blocked-by, related, duplicate)
 - Label management (list, create, delete, add/remove on issues, filter with boolean AND/OR/NOT)
 - Full-text issue search
-- Project tracking and management
+- Project tracking and management (list, get, milestones, create, update, status updates)
+- Document management (list, get, create, update, delete; project/initiative/team scoped)
+- Initiative management (list, get, create, update, attach/detach projects)
+- Raw GraphQL passthrough (`linctl graphql`) reusing stored auth
 - Team and user management
 - Comments and attachments
 - Webhook configuration
@@ -28,7 +31,11 @@ linctl/
 │   ├── root.go            # Root command and global flags
 │   ├── issue.go           # Issue commands (list, create, update, relate, search)
 │   ├── label.go           # Label commands (list, create, delete)
-│   ├── project.go         # Project commands
+│   ├── project.go         # Project commands (list, get, milestones, create, update, status-update)
+│   ├── document.go        # Document commands (list, get, create, update, delete)
+│   ├── initiative.go      # Initiative commands (list, get, create, update, add/remove-project)
+│   ├── graphql.go         # Raw GraphQL passthrough command
+│   ├── input.go           # Shared body-input resolution (--body/--body-file/stdin)
 │   ├── team.go            # Team commands
 │   ├── user.go            # User commands
 │   ├── comment.go         # Comment commands

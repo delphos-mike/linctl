@@ -25,6 +25,10 @@ A comprehensive command-line interface for Linear's API, built with agents in mi
   - Initiative hierarchy
   - Recent issues preview
   - Timeline tracking (created, updated, completed dates)
+  - Create/update projects and post health status updates
+- 🎯 **Initiative Management**: List, view, create, and update initiatives; attach and detach projects
+- 📄 **Document Management**: List, view, create, update, and delete documents scoped to a project, initiative, or team
+- ⚙️ **Raw GraphQL**: `linctl graphql` passthrough for any query/mutation, reusing stored auth
 - 👤 **User Management**: List all users, view user details, and current user info
 - 💬 **Comments**: List and create comments on issues with time-aware formatting
 - 📎 **Attachments**: View file uploads and attachments on issues
@@ -223,9 +227,73 @@ linctl project get 65a77a62-ec5e-491e-b1d9-84aebee01b33
 linctl project milestones <project-id>
 linctl project milestones <project-id> --json    # JSON output
 linctl project milestones <project-id> --plaintext  # Markdown output
+
+# Create a project (at least one team is required)
+linctl project create --name "New Project" --team ENG
+linctl project create --name "Q3 Effort" --team ENG,DES --lead alice@example.com --target-date 2026-09-30
+
+# Update a project (only provided fields change)
+linctl project update <project-id> --name "Renamed" --description "New summary"
+linctl project update <project-id> --body-file plan.md   # replace project body content
+
+# Post a project status update (health + body)
+linctl project status-update create <project-id> --health onTrack --body "Shipping on schedule."
+cat update.md | linctl project status-update create <project-id> --health atRisk
 ```
 
-### 5. Team Management
+### 5. Document Management
+```bash
+# List documents, optionally scoped
+linctl document list
+linctl document list --project <project-id>
+linctl document list --query "Project State"     # title substring match
+linctl document list --initiative <initiative-id> --json
+
+# Get a document (includes body content)
+linctl document get <document-id>
+
+# Create a document (requires a container: --project, --initiative, or --team)
+linctl document create --title "Project State" --project <project-id> --body-file state.md
+echo "# Notes" | linctl document create --title "Notes" --team ENG
+
+# Update a document (only provided fields change)
+linctl document update <document-id> --title "New Title"
+cat state.md | linctl document update <document-id>      # replace body from stdin
+
+# Delete (trash) a document
+linctl document delete <document-id>
+```
+
+### 6. Initiative Management
+```bash
+# List and view initiatives
+linctl initiative list
+linctl initiative list --query "Platform"
+linctl initiative get <initiative-id>
+
+# Create and update initiatives
+linctl initiative create --name "Platform 2026" --status Active --owner alice@example.com
+linctl initiative update <initiative-id> --status Completed
+linctl initiative update <initiative-id> --body-file charter.md
+
+# Attach and detach projects
+linctl initiative add-project <initiative-id> --project <project-id>
+linctl initiative remove-project <initiative-id> --project <project-id>
+```
+
+### 7. Raw GraphQL
+```bash
+# Run any query/mutation using stored linctl auth
+linctl graphql -q 'query { viewer { id name } }'
+
+# Variables: repeatable --var key=value (JSON-parsed when possible) or --vars-file
+linctl graphql --query-file q.graphql --var first=50 --var 'filter={"state":{"eq":"started"}}'
+
+# Read the query from stdin
+echo 'query { viewer { email } }' | linctl graphql
+```
+
+### 8. Team Management
 ```bash
 # List all teams
 linctl team list
@@ -237,7 +305,7 @@ linctl team get ENG
 linctl team members ENG
 ```
 
-### 6. User Management
+### 9. User Management
 ```bash
 # List all users
 linctl user list
@@ -252,7 +320,7 @@ linctl user get john@example.com
 linctl user me
 ```
 
-### 7. Comments
+### 10. Comments
 ```bash
 # List comments on an issue
 linctl comment list LIN-123
