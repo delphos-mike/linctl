@@ -24,6 +24,8 @@ Examples:
   linctl team list              # List all teams
   linctl team get ENG           # Get team details
   linctl team members ENG       # List team members`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var teamListCmd = &cobra.Command{

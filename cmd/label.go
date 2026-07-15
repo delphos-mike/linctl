@@ -25,6 +25,8 @@ Examples:
   linctl label create --name "mike:focus" --color "#eb5757"
   linctl label create --name "mike:focus" --group mike
   linctl label create --name "mike" --is-group`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var labelListCmd = &cobra.Command{

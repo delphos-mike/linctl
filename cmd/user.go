@@ -24,6 +24,8 @@ Examples:
   linctl user list              # List all users
   linctl user get john@example.com  # Get user details
   linctl user me                # Show current user`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var userListCmd = &cobra.Command{
