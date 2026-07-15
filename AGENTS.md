@@ -6,7 +6,7 @@
 
 **Repository**: https://github.com/delphos-mike/linctl
 **Language**: Go 1.23+
-**Current Version**: v0.2.0
+**Current Version**: v0.4.0
 
 ## Key Features
 
