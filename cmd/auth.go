@@ -11,7 +11,10 @@ import (
 	"github.com/spf13/viper"
 )
 
-// authCmd represents the auth command
+// authCmd represents the auth command.
+// Unlike the resource groups, auth deliberately keeps its default Run (bare
+// `linctl auth` logs in) and is intentionally excluded from the
+// requireSubcommand contract — do not "fix" it to use requireSubcommand.
 var authCmd = &cobra.Command{
 	Use:   "auth",
 	Short: "Authenticate with Linear",

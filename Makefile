@@ -23,8 +23,10 @@ clean:
 	rm -f $(BINARY_NAME)
 	go clean
 
-# Run smoke tests
+# Run unit tests and smoke tests
 test:
+	@echo "🧪 Running unit tests..."
+	go test ./...
 	@echo "🧪 Running smoke tests..."
 	@./smoke_test.sh
 
@@ -86,7 +88,7 @@ help:
 	@echo "📖 Available targets:"
 	@echo "  build            - Build the binary"
 	@echo "  clean            - Clean build artifacts"
-	@echo "  test             - Run smoke tests"
+	@echo "  test             - Run unit tests and smoke tests"
 	@echo "  test-verbose     - Run smoke tests with verbose output"
 	@echo "  deps             - Install dependencies"
 	@echo "  fmt              - Format code"
