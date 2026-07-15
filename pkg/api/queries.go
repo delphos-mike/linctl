@@ -231,9 +231,41 @@ type Attachments struct {
 
 // Initiative represents a Linear initiative
 type Initiative struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Content     string     `json:"content"`
+	Status      string     `json:"status"`
+	Health      *string    `json:"health"`
+	TargetDate  *string    `json:"targetDate"`
+	URL         string     `json:"url"`
+	SlugId      string     `json:"slugId"`
+	Owner       *User      `json:"owner"`
+	Creator     *User      `json:"creator"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+	ArchivedAt  *time.Time `json:"archivedAt"`
+	Projects    *Projects  `json:"projects"`
+}
+
+// Initiatives represents a paginated list of initiatives
+type Initiatives struct {
+	Nodes    []Initiative `json:"nodes"`
+	PageInfo PageInfo     `json:"pageInfo"`
+}
+
+// InitiativeToProject represents the join record between an initiative and a project
+type InitiativeToProject struct {
+	ID         string      `json:"id"`
+	SortOrder  float64     `json:"sortOrder"`
+	Project    *Project    `json:"project"`
+	Initiative *Initiative `json:"initiative"`
+}
+
+// InitiativeToProjects represents a paginated list of initiative-project joins
+type InitiativeToProjects struct {
+	Nodes    []InitiativeToProject `json:"nodes"`
+	PageInfo PageInfo              `json:"pageInfo"`
 }
 
 type PageInfo struct {
@@ -358,19 +390,24 @@ type ProjectUpdate struct {
 }
 
 type Documents struct {
-	Nodes []Document `json:"nodes"`
+	Nodes    []Document `json:"nodes"`
+	PageInfo PageInfo   `json:"pageInfo"`
 }
 
 type Document struct {
-	ID        string    `json:"id"`
-	Title     string    `json:"title"`
-	Content   string    `json:"content"`
-	Icon      *string   `json:"icon"`
-	Color     string    `json:"color"`
-	Creator   *User     `json:"creator"`
-	UpdatedBy *User     `json:"updatedBy"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID         string      `json:"id"`
+	Title      string      `json:"title"`
+	Content    string      `json:"content"`
+	Icon       *string     `json:"icon"`
+	Color      string      `json:"color"`
+	SlugId     string      `json:"slugId"`
+	URL        string      `json:"url"`
+	Creator    *User       `json:"creator"`
+	UpdatedBy  *User       `json:"updatedBy"`
+	Project    *Project    `json:"project"`
+	Initiative *Initiative `json:"initiative"`
+	CreatedAt  time.Time   `json:"createdAt"`
+	UpdatedAt  time.Time   `json:"updatedAt"`
 }
 
 type ProjectLinks struct {
@@ -1946,6 +1983,190 @@ func (c *Client) DeleteIssueRelation(ctx context.Context, relationId string) err
 
 	if !response.IssueRelationDelete.Success {
 		return fmt.Errorf("failed to delete relation")
+	}
+
+	return nil
+}
+
+// documentFields is the shared GraphQL selection for a Document node.
+const documentFields = `
+	id
+	title
+	content
+	icon
+	color
+	slugId
+	url
+	createdAt
+	updatedAt
+	creator { id name email }
+	updatedBy { id name email }
+	project { id name url }
+	initiative { id name url }
+`
+
+// GetDocuments returns a list of documents with optional filtering.
+func (c *Client) GetDocuments(ctx context.Context, filter map[string]interface{}, first int, after string, orderBy string) (*Documents, error) {
+	query := fmt.Sprintf(`
+		query Documents($filter: DocumentFilter, $first: Int, $after: String, $orderBy: PaginationOrderBy) {
+			documents(filter: $filter, first: $first, after: $after, orderBy: $orderBy) {
+				nodes {
+					%s
+				}
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`, documentFields)
+
+	variables := map[string]interface{}{
+		"first": first,
+	}
+	if filter != nil {
+		variables["filter"] = filter
+	}
+	if after != "" {
+		variables["after"] = after
+	}
+	if orderBy != "" {
+		variables["orderBy"] = orderBy
+	}
+
+	var response struct {
+		Documents Documents `json:"documents"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	return &response.Documents, nil
+}
+
+// GetDocument returns a single document by ID.
+func (c *Client) GetDocument(ctx context.Context, id string) (*Document, error) {
+	query := fmt.Sprintf(`
+		query Document($id: String!) {
+			document(id: $id) {
+				%s
+			}
+		}
+	`, documentFields)
+
+	variables := map[string]interface{}{
+		"id": id,
+	}
+
+	var response struct {
+		Document Document `json:"document"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	return &response.Document, nil
+}
+
+// CreateDocument creates a new document.
+func (c *Client) CreateDocument(ctx context.Context, input map[string]interface{}) (*Document, error) {
+	query := fmt.Sprintf(`
+		mutation CreateDocument($input: DocumentCreateInput!) {
+			documentCreate(input: $input) {
+				success
+				document {
+					%s
+				}
+			}
+		}
+	`, documentFields)
+
+	variables := map[string]interface{}{
+		"input": input,
+	}
+
+	var response struct {
+		DocumentCreate struct {
+			Success  bool     `json:"success"`
+			Document Document `json:"document"`
+		} `json:"documentCreate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.DocumentCreate.Success {
+		return nil, fmt.Errorf("failed to create document")
+	}
+
+	return &response.DocumentCreate.Document, nil
+}
+
+// UpdateDocument updates an existing document.
+func (c *Client) UpdateDocument(ctx context.Context, id string, input map[string]interface{}) (*Document, error) {
+	query := fmt.Sprintf(`
+		mutation UpdateDocument($id: String!, $input: DocumentUpdateInput!) {
+			documentUpdate(id: $id, input: $input) {
+				success
+				document {
+					%s
+				}
+			}
+		}
+	`, documentFields)
+
+	variables := map[string]interface{}{
+		"id":    id,
+		"input": input,
+	}
+
+	var response struct {
+		DocumentUpdate struct {
+			Success  bool     `json:"success"`
+			Document Document `json:"document"`
+		} `json:"documentUpdate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.DocumentUpdate.Success {
+		return nil, fmt.Errorf("failed to update document")
+	}
+
+	return &response.DocumentUpdate.Document, nil
+}
+
+// DeleteDocument deletes (moves to trash) a document by ID.
+func (c *Client) DeleteDocument(ctx context.Context, id string) error {
+	query := `
+		mutation DeleteDocument($id: String!) {
+			documentDelete(id: $id) {
+				success
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"id": id,
+	}
+
+	var response struct {
+		DocumentDelete struct {
+			Success bool `json:"success"`
+		} `json:"documentDelete"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return err
+	}
+
+	if !response.DocumentDelete.Success {
+		return fmt.Errorf("failed to delete document")
 	}
 
 	return nil
