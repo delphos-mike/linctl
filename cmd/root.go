@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/fatih/color"
@@ -16,9 +17,62 @@ var (
 	jsonOut   bool
 )
 
-// version is set at build time via -ldflags
-// default value is for local dev builds
+// version is set at build time via -ldflags (see Makefile, which injects
+// github.com/delphos-mike/linctl/cmd.version). The default is for local dev
+// builds that do not go through the Makefile.
 var version = "dev"
+
+// resolveVersion determines the version string to report. It reads the
+// module version embedded by the Go toolchain and applies the fallback
+// chain in pickVersion.
+func resolveVersion() string {
+	buildInfo := ""
+	if info, ok := debug.ReadBuildInfo(); ok {
+		buildInfo = info.Main.Version
+	}
+	return pickVersion(version, buildInfo)
+}
+
+// pickVersion implements the version fallback chain. It is kept separate from
+// the runtime build-info lookup in resolveVersion so it can be unit-tested.
+//
+//  1. injected: the -ldflags value (release builds via Makefile/CI) wins when
+//     it is a real value (not empty and not the "dev" default).
+//  2. buildInfo: the module version recorded by the toolchain. A
+//     `go install module@vX.Y.Z` build carries the tag here; a plain source
+//     build carries "(devel)", which we ignore.
+//  3. otherwise fall back to "dev".
+func pickVersion(injected, buildInfo string) string {
+	if injected != "" && injected != "dev" {
+		return injected
+	}
+	if buildInfo != "" && buildInfo != "(devel)" {
+		return buildInfo
+	}
+	return "dev"
+}
+
+// requireSubcommand is the RunE for command groups that exist only to hold
+// subcommands. Invoked bare (no positional args) it prints the group's help
+// and exits 0; invoked with an unrecognized first argument it returns an
+// "unknown command" error so the CLI exits non-zero instead of silently
+// printing help and reporting success. Groups using this helper set
+// SilenceUsage so the error prints exactly once to stderr.
+func requireSubcommand(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return cmd.Help()
+	}
+	err := fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath())
+	// Mirror cobra's own default so near-miss typos yield suggestions
+	// (SuggestionsFor otherwise leaves the minimum distance at 0).
+	if cmd.SuggestionsMinimumDistance <= 0 {
+		cmd.SuggestionsMinimumDistance = 2
+	}
+	if suggestions := cmd.SuggestionsFor(args[0]); len(suggestions) > 0 {
+		err = fmt.Errorf("%w\n\nDid you mean this?\n\t%s", err, strings.Join(suggestions, "\n\t"))
+	}
+	return err
+}
 
 // generateHeader creates a nice header box with proper Unicode box drawing
 func generateHeader() string {
@@ -66,10 +120,9 @@ func generateHeader() string {
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
-	Use:     "linctl",
-	Short:   "A comprehensive Linear CLI tool",
-	Long:    color.New(color.FgCyan).Sprintf("%s\nA comprehensive CLI tool for Linear's API featuring:\n• Issue management (create, list, update, archive)\n• Project tracking and collaboration  \n• Team and user management\n• Comments and attachments\n• Webhook configuration\n• Table/plaintext/JSON output formats\n", generateHeader()),
-	Version: version,
+	Use:   "linctl",
+	Short: "A comprehensive Linear CLI tool",
+	Long:  color.New(color.FgCyan).Sprintf("%s\nA comprehensive CLI tool for Linear's API featuring:\n• Issue management (create, list, update, archive)\n• Project tracking and collaboration  \n• Team and user management\n• Comments and attachments\n• Webhook configuration\n• Table/plaintext/JSON output formats\n", generateHeader()),
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -87,6 +140,9 @@ func GetRootCmd() *cobra.Command {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+
+	// Resolve the reported version now that build info is available.
+	rootCmd.Version = resolveVersion()
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.linctl.yaml)")

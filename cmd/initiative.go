@@ -29,6 +29,8 @@ Examples:
   linctl initiative create --name "Platform 2026" --status Active
   linctl initiative update INITIATIVE-ID --status Completed
   linctl initiative add-project INITIATIVE-ID --project PROJECT-ID`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var initiativeListCmd = &cobra.Command{

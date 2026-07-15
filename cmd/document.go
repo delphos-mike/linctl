@@ -30,6 +30,8 @@ Examples:
   linctl document create --title "Project State" --project PROJECT-ID --body-file state.md
   cat state.md | linctl document update DOCUMENT-ID
   linctl document delete DOCUMENT-ID`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var documentListCmd = &cobra.Command{

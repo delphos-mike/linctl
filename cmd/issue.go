@@ -31,6 +31,8 @@ Examples:
   linctl issue create --title "Bug fix" --team ENG
   linctl issue relate LIN-123 --blocks LIN-456
   linctl issue unrelate LIN-123 --blocks LIN-456`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var issueListCmd = &cobra.Command{

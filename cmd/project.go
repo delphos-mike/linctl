@@ -45,6 +45,8 @@ Examples:
   linctl project list --newer-than 1_month_ago  # List projects from last month
   linctl project get PROJECT-ID            # Get project details
   linctl project create                    # Create a new project`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var projectListCmd = &cobra.Command{
@@ -952,9 +954,11 @@ fields change.`,
 }
 
 var projectStatusUpdateCmd = &cobra.Command{
-	Use:     "status-update",
-	Aliases: []string{"su"},
-	Short:   "Manage project status updates",
+	Use:          "status-update",
+	Aliases:      []string{"su"},
+	Short:        "Manage project status updates",
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var projectStatusUpdateCreateCmd = &cobra.Command{

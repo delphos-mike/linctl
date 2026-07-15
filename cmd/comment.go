@@ -24,6 +24,8 @@ var commentCmd = &cobra.Command{
 Examples:
   linctl comment list LIN-123        # List comments for an issue
   linctl comment create LIN-123 --body "This is fixed"  # Add a comment`,
+	SilenceUsage: true,
+	RunE:         requireSubcommand,
 }
 
 var commentListCmd = &cobra.Command{
