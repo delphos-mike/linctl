@@ -57,8 +57,11 @@ func NewClientWithURL(baseURL, authHeader string) *Client {
 	}
 }
 
-// Execute performs a GraphQL request
-func (c *Client) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+// ExecuteRaw performs a GraphQL request and returns the parsed GraphQL
+// response (data + errors) without unmarshaling data into a typed struct.
+// Transport- and HTTP-level failures are returned as errors; GraphQL-level
+// errors are left in the returned response for the caller to inspect.
+func (c *Client) ExecuteRaw(ctx context.Context, query string, variables map[string]interface{}) (*GraphQLResponse, error) {
 	reqBody := GraphQLRequest{
 		Query:     query,
 		Variables: variables,
@@ -66,12 +69,12 @@ func (c *Client) Execute(ctx context.Context, query string, variables map[string
 
 	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -80,22 +83,33 @@ func (c *Client) Execute(ctx context.Context, query string, variables map[string
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	var gqlResp GraphQLResponse
 	if err := json.Unmarshal(body, &gqlResp); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &gqlResp, nil
+}
+
+// Execute performs a GraphQL request and unmarshals the response data into
+// result. GraphQL-level errors are surfaced as a Go error.
+func (c *Client) Execute(ctx context.Context, query string, variables map[string]interface{}, result interface{}) error {
+	gqlResp, err := c.ExecuteRaw(ctx, query, variables)
+	if err != nil {
+		return err
 	}
 
 	if len(gqlResp.Errors) > 0 {
