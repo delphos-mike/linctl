@@ -2293,3 +2293,285 @@ func (c *Client) CreateProjectUpdate(ctx context.Context, input map[string]inter
 
 	return &response.ProjectUpdateCreate.ProjectUpdate, nil
 }
+
+// initiativeFields is the shared GraphQL selection for an Initiative node.
+const initiativeFields = `
+	id
+	name
+	description
+	content
+	status
+	health
+	targetDate
+	url
+	slugId
+	createdAt
+	updatedAt
+	archivedAt
+	owner { id name email }
+	creator { id name email }
+`
+
+// GetInitiatives returns a list of initiatives with optional filtering.
+func (c *Client) GetInitiatives(ctx context.Context, filter map[string]interface{}, first int, after string, orderBy string) (*Initiatives, error) {
+	query := fmt.Sprintf(`
+		query Initiatives($filter: InitiativeFilter, $first: Int, $after: String, $orderBy: PaginationOrderBy) {
+			initiatives(filter: $filter, first: $first, after: $after, orderBy: $orderBy) {
+				nodes {
+					%s
+				}
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`, initiativeFields)
+
+	variables := map[string]interface{}{
+		"first": first,
+	}
+	if filter != nil {
+		variables["filter"] = filter
+	}
+	if after != "" {
+		variables["after"] = after
+	}
+	if orderBy != "" {
+		variables["orderBy"] = orderBy
+	}
+
+	var response struct {
+		Initiatives Initiatives `json:"initiatives"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	return &response.Initiatives, nil
+}
+
+// GetInitiative returns a single initiative by ID, including its projects.
+func (c *Client) GetInitiative(ctx context.Context, id string) (*Initiative, error) {
+	query := fmt.Sprintf(`
+		query Initiative($id: String!) {
+			initiative(id: $id) {
+				%s
+				projects(first: 100) {
+					nodes {
+						id
+						name
+						state
+						url
+					}
+				}
+			}
+		}
+	`, initiativeFields)
+
+	variables := map[string]interface{}{
+		"id": id,
+	}
+
+	var response struct {
+		Initiative Initiative `json:"initiative"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	return &response.Initiative, nil
+}
+
+// CreateInitiative creates a new initiative.
+func (c *Client) CreateInitiative(ctx context.Context, input map[string]interface{}) (*Initiative, error) {
+	query := fmt.Sprintf(`
+		mutation CreateInitiative($input: InitiativeCreateInput!) {
+			initiativeCreate(input: $input) {
+				success
+				initiative {
+					%s
+				}
+			}
+		}
+	`, initiativeFields)
+
+	variables := map[string]interface{}{
+		"input": input,
+	}
+
+	var response struct {
+		InitiativeCreate struct {
+			Success    bool       `json:"success"`
+			Initiative Initiative `json:"initiative"`
+		} `json:"initiativeCreate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.InitiativeCreate.Success {
+		return nil, fmt.Errorf("failed to create initiative")
+	}
+
+	return &response.InitiativeCreate.Initiative, nil
+}
+
+// UpdateInitiative updates an existing initiative.
+func (c *Client) UpdateInitiative(ctx context.Context, id string, input map[string]interface{}) (*Initiative, error) {
+	query := fmt.Sprintf(`
+		mutation UpdateInitiative($id: String!, $input: InitiativeUpdateInput!) {
+			initiativeUpdate(id: $id, input: $input) {
+				success
+				initiative {
+					%s
+				}
+			}
+		}
+	`, initiativeFields)
+
+	variables := map[string]interface{}{
+		"id":    id,
+		"input": input,
+	}
+
+	var response struct {
+		InitiativeUpdate struct {
+			Success    bool       `json:"success"`
+			Initiative Initiative `json:"initiative"`
+		} `json:"initiativeUpdate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.InitiativeUpdate.Success {
+		return nil, fmt.Errorf("failed to update initiative")
+	}
+
+	return &response.InitiativeUpdate.Initiative, nil
+}
+
+// AddProjectToInitiative attaches a project to an initiative.
+func (c *Client) AddProjectToInitiative(ctx context.Context, initiativeID, projectID string) error {
+	query := `
+		mutation AddProjectToInitiative($input: InitiativeToProjectCreateInput!) {
+			initiativeToProjectCreate(input: $input) {
+				success
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"input": map[string]interface{}{
+			"initiativeId": initiativeID,
+			"projectId":    projectID,
+		},
+	}
+
+	var response struct {
+		InitiativeToProjectCreate struct {
+			Success bool `json:"success"`
+		} `json:"initiativeToProjectCreate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return err
+	}
+
+	if !response.InitiativeToProjectCreate.Success {
+		return fmt.Errorf("failed to attach project to initiative")
+	}
+
+	return nil
+}
+
+// findInitiativeToProjectID resolves the join-record ID for an
+// (initiative, project) pair by paging the unfilterable initiativeToProjects
+// query. Returns an empty string if no such join exists.
+func (c *Client) findInitiativeToProjectID(ctx context.Context, initiativeID, projectID string) (string, error) {
+	query := `
+		query InitiativeToProjects($first: Int, $after: String) {
+			initiativeToProjects(first: $first, after: $after) {
+				nodes {
+					id
+					initiative { id }
+					project { id }
+				}
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	`
+
+	after := ""
+	for {
+		variables := map[string]interface{}{"first": 250}
+		if after != "" {
+			variables["after"] = after
+		}
+
+		var response struct {
+			InitiativeToProjects InitiativeToProjects `json:"initiativeToProjects"`
+		}
+		if err := c.Execute(ctx, query, variables, &response); err != nil {
+			return "", err
+		}
+
+		for _, node := range response.InitiativeToProjects.Nodes {
+			if node.Initiative != nil && node.Project != nil &&
+				node.Initiative.ID == initiativeID && node.Project.ID == projectID {
+				return node.ID, nil
+			}
+		}
+
+		if !response.InitiativeToProjects.PageInfo.HasNextPage {
+			return "", nil
+		}
+		after = response.InitiativeToProjects.PageInfo.EndCursor
+	}
+}
+
+// RemoveProjectFromInitiative detaches a project from an initiative by
+// resolving and deleting the join record.
+func (c *Client) RemoveProjectFromInitiative(ctx context.Context, initiativeID, projectID string) error {
+	joinID, err := c.findInitiativeToProjectID(ctx, initiativeID, projectID)
+	if err != nil {
+		return err
+	}
+	if joinID == "" {
+		return fmt.Errorf("project %s is not attached to initiative %s", projectID, initiativeID)
+	}
+
+	query := `
+		mutation RemoveProjectFromInitiative($id: String!) {
+			initiativeToProjectDelete(id: $id) {
+				success
+			}
+		}
+	`
+
+	variables := map[string]interface{}{"id": joinID}
+
+	var response struct {
+		InitiativeToProjectDelete struct {
+			Success bool `json:"success"`
+		} `json:"initiativeToProjectDelete"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return err
+	}
+
+	if !response.InitiativeToProjectDelete.Success {
+		return fmt.Errorf("failed to detach project from initiative")
+	}
+
+	return nil
+}
