@@ -207,11 +207,14 @@ container; a document with no association is rejected.`,
 		if hasBody {
 			input["content"] = body
 		}
+		hasContainer := false
 		if v, _ := cmd.Flags().GetString("project"); v != "" {
 			input["projectId"] = v
+			hasContainer = true
 		}
 		if v, _ := cmd.Flags().GetString("initiative"); v != "" {
 			input["initiativeId"] = v
+			hasContainer = true
 		}
 		if v, _ := cmd.Flags().GetString("team"); v != "" {
 			team, err := client.GetTeam(context.Background(), v)
@@ -220,6 +223,11 @@ container; a document with no association is rejected.`,
 				os.Exit(1)
 			}
 			input["teamId"] = team.ID
+			hasContainer = true
+		}
+		if !hasContainer {
+			output.Error("A document must have a container. Provide one of --project, --initiative, or --team.", plaintext, jsonOut)
+			os.Exit(1)
 		}
 		if v, _ := cmd.Flags().GetString("icon"); v != "" {
 			input["icon"] = v
