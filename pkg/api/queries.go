@@ -2171,3 +2171,125 @@ func (c *Client) DeleteDocument(ctx context.Context, id string) error {
 
 	return nil
 }
+
+// projectWriteFields is a lean Project selection returned by write mutations.
+const projectWriteFields = `
+	id
+	name
+	description
+	state
+	url
+	startDate
+	targetDate
+	lead { id name email }
+`
+
+// CreateProject creates a new project.
+func (c *Client) CreateProject(ctx context.Context, input map[string]interface{}) (*Project, error) {
+	query := fmt.Sprintf(`
+		mutation CreateProject($input: ProjectCreateInput!) {
+			projectCreate(input: $input) {
+				success
+				project {
+					%s
+				}
+			}
+		}
+	`, projectWriteFields)
+
+	variables := map[string]interface{}{
+		"input": input,
+	}
+
+	var response struct {
+		ProjectCreate struct {
+			Success bool    `json:"success"`
+			Project Project `json:"project"`
+		} `json:"projectCreate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.ProjectCreate.Success {
+		return nil, fmt.Errorf("failed to create project")
+	}
+
+	return &response.ProjectCreate.Project, nil
+}
+
+// UpdateProject updates an existing project.
+func (c *Client) UpdateProject(ctx context.Context, id string, input map[string]interface{}) (*Project, error) {
+	query := fmt.Sprintf(`
+		mutation UpdateProject($id: String!, $input: ProjectUpdateInput!) {
+			projectUpdate(id: $id, input: $input) {
+				success
+				project {
+					%s
+				}
+			}
+		}
+	`, projectWriteFields)
+
+	variables := map[string]interface{}{
+		"id":    id,
+		"input": input,
+	}
+
+	var response struct {
+		ProjectUpdate struct {
+			Success bool    `json:"success"`
+			Project Project `json:"project"`
+		} `json:"projectUpdate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.ProjectUpdate.Success {
+		return nil, fmt.Errorf("failed to update project")
+	}
+
+	return &response.ProjectUpdate.Project, nil
+}
+
+// CreateProjectUpdate posts a project status update (health + body).
+func (c *Client) CreateProjectUpdate(ctx context.Context, input map[string]interface{}) (*ProjectUpdate, error) {
+	query := `
+		mutation CreateProjectUpdate($input: ProjectUpdateCreateInput!) {
+			projectUpdateCreate(input: $input) {
+				success
+				projectUpdate {
+					id
+					body
+					health
+					createdAt
+					user { id name email }
+				}
+			}
+		}
+	`
+
+	variables := map[string]interface{}{
+		"input": input,
+	}
+
+	var response struct {
+		ProjectUpdateCreate struct {
+			Success       bool          `json:"success"`
+			ProjectUpdate ProjectUpdate `json:"projectUpdate"`
+		} `json:"projectUpdateCreate"`
+	}
+
+	if err := c.Execute(ctx, query, variables, &response); err != nil {
+		return nil, err
+	}
+
+	if !response.ProjectUpdateCreate.Success {
+		return nil, fmt.Errorf("failed to create project update")
+	}
+
+	return &response.ProjectUpdateCreate.ProjectUpdate, nil
+}

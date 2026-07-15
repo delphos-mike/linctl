@@ -746,11 +746,291 @@ var projectMilestonesCmd = &cobra.Command{
 	},
 }
 
+// resolveTeamIDs resolves a comma-separated list of team keys to their IDs.
+func resolveTeamIDs(ctx context.Context, client *api.Client, csv string) ([]string, error) {
+	var ids []string
+	for _, key := range strings.Split(csv, ",") {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		team, err := client.GetTeam(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve team %q: %w", key, err)
+		}
+		ids = append(ids, team.ID)
+	}
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("no valid team keys provided")
+	}
+	return ids, nil
+}
+
+// resolveLeadID resolves a user email to its ID.
+func resolveLeadID(ctx context.Context, client *api.Client, email string) (string, error) {
+	user, err := client.GetUser(ctx, email)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve lead %q: %w", email, err)
+	}
+	return user.ID, nil
+}
+
+var projectCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a project",
+	Long: `Create a new project. At least one team is required. Body content is read
+from --content, --body-file, or piped stdin.
+
+Examples:
+  linctl project create --name "New Project" --team ENG
+  linctl project create --name "Q3 Effort" --team ENG,DES --lead alice@example.com --target-date 2026-09-30`,
+	Run: func(cmd *cobra.Command, args []string) {
+		plaintext := viper.GetBool("plaintext")
+		jsonOut := viper.GetBool("json")
+
+		name, _ := cmd.Flags().GetString("name")
+		if name == "" {
+			output.Error("--name is required", plaintext, jsonOut)
+			os.Exit(1)
+		}
+		teamCSV, _ := cmd.Flags().GetString("team")
+		if teamCSV == "" {
+			output.Error("--team is required (at least one team key)", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		content, hasContent, err := resolveBody(cmd, "content", "body-file")
+		if err != nil {
+			output.Error(err.Error(), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error(fmt.Sprintf("Authentication failed: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+		client := api.NewClient(authHeader)
+		ctx := context.Background()
+
+		teamIDs, err := resolveTeamIDs(ctx, client, teamCSV)
+		if err != nil {
+			output.Error(err.Error(), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		input := map[string]interface{}{
+			"name":    name,
+			"teamIds": teamIDs,
+		}
+		if hasContent {
+			input["content"] = content
+		}
+		if v, _ := cmd.Flags().GetString("description"); v != "" {
+			input["description"] = v
+		}
+		if v, _ := cmd.Flags().GetString("lead"); v != "" {
+			leadID, err := resolveLeadID(ctx, client, v)
+			if err != nil {
+				output.Error(err.Error(), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["leadId"] = leadID
+		}
+		if v, _ := cmd.Flags().GetString("start-date"); v != "" {
+			input["startDate"] = v
+		}
+		if v, _ := cmd.Flags().GetString("target-date"); v != "" {
+			input["targetDate"] = v
+		}
+		if v, _ := cmd.Flags().GetString("status-id"); v != "" {
+			input["statusId"] = v
+		}
+
+		project, err := client.CreateProject(ctx, input)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to create project: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		if jsonOut {
+			output.JSON(project)
+			return
+		}
+		output.Success(fmt.Sprintf("Created project %q (%s)", project.Name, project.ID), plaintext, jsonOut)
+		if !plaintext {
+			fmt.Printf("URL: %s\n", constructProjectURL(project.ID, project.URL))
+		}
+	},
+}
+
+var projectUpdateCmd = &cobra.Command{
+	Use:   "update PROJECT-ID",
+	Short: "Update a project",
+	Long: `Update a project's name, description, body, lead, dates, teams, or status.
+Body content is read from --content, --body-file, or piped stdin. Only provided
+fields change.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		plaintext := viper.GetBool("plaintext")
+		jsonOut := viper.GetBool("json")
+
+		content, hasContent, err := resolveBody(cmd, "content", "body-file")
+		if err != nil {
+			output.Error(err.Error(), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error(fmt.Sprintf("Authentication failed: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+		client := api.NewClient(authHeader)
+		ctx := context.Background()
+
+		input := map[string]interface{}{}
+		if cmd.Flags().Changed("name") {
+			v, _ := cmd.Flags().GetString("name")
+			input["name"] = v
+		}
+		if hasContent {
+			input["content"] = content
+		}
+		if cmd.Flags().Changed("description") {
+			v, _ := cmd.Flags().GetString("description")
+			input["description"] = v
+		}
+		if cmd.Flags().Changed("team") {
+			v, _ := cmd.Flags().GetString("team")
+			teamIDs, err := resolveTeamIDs(ctx, client, v)
+			if err != nil {
+				output.Error(err.Error(), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["teamIds"] = teamIDs
+		}
+		if cmd.Flags().Changed("lead") {
+			v, _ := cmd.Flags().GetString("lead")
+			leadID, err := resolveLeadID(ctx, client, v)
+			if err != nil {
+				output.Error(err.Error(), plaintext, jsonOut)
+				os.Exit(1)
+			}
+			input["leadId"] = leadID
+		}
+		if cmd.Flags().Changed("start-date") {
+			v, _ := cmd.Flags().GetString("start-date")
+			input["startDate"] = v
+		}
+		if cmd.Flags().Changed("target-date") {
+			v, _ := cmd.Flags().GetString("target-date")
+			input["targetDate"] = v
+		}
+		if cmd.Flags().Changed("status-id") {
+			v, _ := cmd.Flags().GetString("status-id")
+			input["statusId"] = v
+		}
+
+		if len(input) == 0 {
+			output.Error("Nothing to update. Provide at least one field flag.", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		project, err := client.UpdateProject(ctx, args[0], input)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to update project: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		if jsonOut {
+			output.JSON(project)
+			return
+		}
+		output.Success(fmt.Sprintf("Updated project %q (%s)", project.Name, project.ID), plaintext, jsonOut)
+	},
+}
+
+var projectStatusUpdateCmd = &cobra.Command{
+	Use:     "status-update",
+	Aliases: []string{"su"},
+	Short:   "Manage project status updates",
+}
+
+var projectStatusUpdateCreateCmd = &cobra.Command{
+	Use:   "create PROJECT-ID",
+	Short: "Post a project status update",
+	Long: `Post a health + body status update to a project. Body content is read from
+--body, --body-file, or piped stdin.
+
+Examples:
+  linctl project status-update create PROJECT-ID --health onTrack --body "Shipping on schedule."
+  cat update.md | linctl project status-update create PROJECT-ID --health atRisk`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		plaintext := viper.GetBool("plaintext")
+		jsonOut := viper.GetBool("json")
+
+		health, _ := cmd.Flags().GetString("health")
+		if !isValidHealth(health) {
+			output.Error("--health is required and must be one of: onTrack, atRisk, offTrack", plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		body, hasBody, err := resolveBody(cmd, "body", "body-file")
+		if err != nil {
+			output.Error(err.Error(), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		authHeader, err := auth.GetAuthHeader()
+		if err != nil {
+			output.Error(fmt.Sprintf("Authentication failed: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+		client := api.NewClient(authHeader)
+
+		input := map[string]interface{}{
+			"projectId": args[0],
+			"health":    health,
+		}
+		if hasBody {
+			input["body"] = body
+		}
+
+		update, err := client.CreateProjectUpdate(context.Background(), input)
+		if err != nil {
+			output.Error(fmt.Sprintf("Failed to create project update: %v", err), plaintext, jsonOut)
+			os.Exit(1)
+		}
+
+		if jsonOut {
+			output.JSON(update)
+			return
+		}
+		output.Success(fmt.Sprintf("Posted %s update to project %s", update.Health, args[0]), plaintext, jsonOut)
+	},
+}
+
+// isValidHealth reports whether h is a valid ProjectUpdateHealthType value.
+func isValidHealth(h string) bool {
+	switch h {
+	case "onTrack", "atRisk", "offTrack":
+		return true
+	default:
+		return false
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(projectCmd)
 	projectCmd.AddCommand(projectListCmd)
 	projectCmd.AddCommand(projectGetCmd)
 	projectCmd.AddCommand(projectMilestonesCmd)
+	projectCmd.AddCommand(projectCreateCmd)
+	projectCmd.AddCommand(projectUpdateCmd)
+	projectCmd.AddCommand(projectStatusUpdateCmd)
+	projectStatusUpdateCmd.AddCommand(projectStatusUpdateCreateCmd)
 
 	// List command flags
 	projectListCmd.Flags().StringP("team", "t", "", "Filter by team key")
@@ -759,4 +1039,31 @@ func init() {
 	projectListCmd.Flags().BoolP("include-completed", "c", false, "Include completed and canceled projects")
 	projectListCmd.Flags().StringP("sort", "o", "linear", "Sort order: linear (default), created, updated")
 	projectListCmd.Flags().StringP("newer-than", "n", "", "Show projects created after this time (default: 6_months_ago, use 'all_time' for no filter)")
+
+	// Create command flags
+	projectCreateCmd.Flags().String("name", "", "Project name (required)")
+	projectCreateCmd.Flags().StringP("team", "t", "", "Team key(s), comma-separated (at least one required)")
+	projectCreateCmd.Flags().String("description", "", "Short project description (summary)")
+	projectCreateCmd.Flags().String("content", "", "Project body content (markdown)")
+	projectCreateCmd.Flags().String("body-file", "", "Path to a file containing the project body content")
+	projectCreateCmd.Flags().String("lead", "", "Project lead email")
+	projectCreateCmd.Flags().String("start-date", "", "Start date (YYYY-MM-DD)")
+	projectCreateCmd.Flags().String("target-date", "", "Target date (YYYY-MM-DD)")
+	projectCreateCmd.Flags().String("status-id", "", "Project status ID (ProjectStatus UUID)")
+
+	// Update command flags
+	projectUpdateCmd.Flags().String("name", "", "New project name")
+	projectUpdateCmd.Flags().StringP("team", "t", "", "Replacement team key(s), comma-separated")
+	projectUpdateCmd.Flags().String("description", "", "New short description (summary)")
+	projectUpdateCmd.Flags().String("content", "", "New project body content (markdown)")
+	projectUpdateCmd.Flags().String("body-file", "", "Path to a file containing the new project body content")
+	projectUpdateCmd.Flags().String("lead", "", "New project lead email")
+	projectUpdateCmd.Flags().String("start-date", "", "New start date (YYYY-MM-DD)")
+	projectUpdateCmd.Flags().String("target-date", "", "New target date (YYYY-MM-DD)")
+	projectUpdateCmd.Flags().String("status-id", "", "New project status ID (ProjectStatus UUID)")
+
+	// Status update flags
+	projectStatusUpdateCreateCmd.Flags().String("health", "", "Health: onTrack, atRisk, or offTrack (required)")
+	projectStatusUpdateCreateCmd.Flags().String("body", "", "Update body content (markdown)")
+	projectStatusUpdateCreateCmd.Flags().String("body-file", "", "Path to a file containing the update body")
 }
