@@ -24,6 +24,9 @@ go.work
 *.swo
 *~
 
+# Local agent working notes (untracked scratch space)
+.local/
+
 # OS files
 .DS_Store
 Thumbs.db
